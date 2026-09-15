@@ -9,9 +9,9 @@ App personal para registrar gastos e ingresos desde el teléfono y ver siempre c
 
 ## Límites
 
-Abre en la **semana** actual (lunes a domingo). Tocar el periodo lo voltea a **mes** y viceversa; las flechas avanzan de semana en semana o de mes en mes. Lo variable se reparte por día; los cargos fijos (`dias` en la categoría: días del mes en que se cobran) cuentan completos en su semana. Las categorías van ordenadas de la más cerca de su límite a la más lejana; los fijos ya cobrados, al final. Los fondos acumulables van aparte.
+Abre en la **semana** actual (lunes a domingo). Arriba se ven los dos periodos: el que tiene el foco en grande y el otro chico debajo; tocar esa zona (número y pato) o el periodo del encabezado intercambia el foco semana ⇄ mes; las flechas avanzan de semana en semana o de mes en mes. Lo variable se reparte por día; los cargos fijos (`dias` en la categoría: días del mes en que se cobran) cuentan completos en su semana. Las categorías van ordenadas de la más cerca de su límite a la más lejana; los fijos ya cobrados, al final. Los fondos acumulables van aparte.
 
-El **pato** (`js/duck.js`, sprites 16×16 con paleta de NES) cuenta cómo va el mes: feliz, nervioso (va más rápido que el mes o con varias categorías pasadas), mal (se pasó del total) o dormido (sin gastos). Al tocarlo dice por qué.
+El **pato** (`js/duck.js`, sprites 16×16 monocromos al estilo NES) cuenta cómo va el mes: feliz, nervioso (va más rápido que el mes o con varias categorías pasadas), mal (se pasó del total) o dormido (sin gastos). Al tocarlo dice por qué.
 
 ## Captura rápida
 

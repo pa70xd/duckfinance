@@ -85,7 +85,7 @@
       if (enter) countUp($('#queda'), lastQueda, quedaPeriodo);
       lastQueda = quedaPeriodo;
       const stage = $('#duck-stage');
-      if (stage) { const sa = saludMes(); Duck.mount(stage, sa.mood, pixelTxt(sa.msg), enter); }
+      if (stage) { const sa = saludMes(); Duck.mount(stage, sa.mood, pixelTxt(sa.msg), enter && !state.flip); if (state.flip) Duck.poke(); }
     }
     enter = false; state.dir = 0; state.flip = false;
   }
@@ -142,19 +142,22 @@
   }
 
   // ---------- LÍMITES (pantalla principal) ----------
-  // Periodo en pantalla: la semana (lunes a domingo) o el mes. Los fondos acumulables se muestran aparte.
+  // Los dos periodos de Límites: [el que tiene el foco, el otro]. Semana = lunes a domingo. Los fondos acumulables van aparte.
   function periodoLimites() {
-    if (state.periodo === 'semana') {
-      const P = computeSemana(D, state.semana, hoy());
-      const gastoFondo = Object.fromEntries(P.fondos.map(f => [f.nombre, f.gastado]));
-      return { semana: true, s: P.resumen, cats: P.cats.filter(c => c.limite > 0 || c.gastado !== 0), otras: P.otras, gastoFondo, faltan: P.resumen.diasRestantes };
-    }
-    const s = R.resumen, actual = state.mes === hoy().slice(0, 7);
-    return {
-      semana: false, s: { presupuesto: s.presupuesto, gastado: s.gastadoPresup, sinClasificar: s.sinClasificar, queda: s.queda },
+    const P = computeSemana(D, state.semana, hoy());
+    const actualSem = P.resumen.diasRestantes > 0 && P.resumen.diasRestantes < 8 && hoy() >= P.ws;
+    const semana = {
+      semana: true, s: P.resumen, titulo: etiquetaSemana(state.semana), sufijo: actualSem ? ' esta semana' : ' en la semana',
+      cats: P.cats.filter(c => c.limite > 0 || c.gastado !== 0), otras: P.otras,
+      gastoFondo: Object.fromEntries(P.fondos.map(f => [f.nombre, f.gastado])), faltan: actualSem ? P.resumen.diasRestantes : 0
+    };
+    const r = R.resumen, actual = state.mes === hoy().slice(0, 7);
+    const mes = {
+      semana: false, s: { presupuesto: r.presupuesto, gastado: r.gastadoPresup, sinClasificar: r.sinClasificar, queda: r.queda }, titulo: mesLargo(state.mes), sufijo: actual ? ' este mes' : '',
       cats: R.cats.filter(c => c.tipo === 'Mensual'), otras: R.cats.filter(c => !c.presupuestada && c.gastado !== 0 && c.tipo !== 'Ingreso'),
       gastoFondo: null, faltan: actual ? diasRestantes() : 0
     };
+    return state.periodo === 'semana' ? [semana, mes] : [mes, semana];
   }
   // Cómo va el mes, para el pato: dormido (sin gastos o mes futuro), feliz, nervioso (va rápido o con varias pasadas) o mal (se pasó del total)
   function saludMes() {
@@ -171,20 +174,28 @@
     return { mood: 'feliz', msg: pasadas.length ? `Vas bien, cuida ${pasadas[0].nombre}` : `Vas bien: quedan ${money(s.queda)}` };
   }
 
+  const usoDe = x => x.presupuesto ? (x.gastado + x.sinClasificar) / x.presupuesto : 0;
   function vLimites() {
-    const L = periodoLimites(), s = L.s;
-    const uso = s.presupuesto ? (s.gastado + s.sinClasificar) / s.presupuesto : 0;
+    const [L, O] = periodoLimites(), s = L.s, so = O.s;
+    const uso = usoDe(s), usoO = usoDe(so);
     const actual = state.mes === hoy().slice(0, 7);
     quedaPeriodo = s.queda;
-    let h = `<section class="blk hero">${REG('r')}
-      <div class="big n ${s.queda < 0 ? 'neg' : ''}" id="queda">${money(s.queda)}</div>
-      <div class="mlabel" style="margin-top:6px">${s.queda < 0 ? 'de mas sobre' : 'disponibles de'} ${money(s.presupuesto)}${L.semana ? ' esta semana' : ''}</div>
-      ${bar(uso)}
-      <div class="proof" style="margin-top:12px;font-size:14px;color:var(--muted)">${pct(uso)} gastado${s.sinClasificar ? ' · ' + money(s.sinClasificar) + ' por clasificar' : ''}${L.faltan ? ' · faltan ' + L.faltan + (L.faltan === 1 ? ' dia' : ' dias') : ''}</div>
+    // Toda la zona del número y el pato alterna el foco semana ⇄ mes; el periodo sin foco queda chico debajo
+    let h = `<section class="blk hero tap ${state.flip ? 'swap-in' : ''}" data-act="flip" role="button" tabindex="0" aria-label="${esc(L.titulo)}: ${money(s.queda)} disponibles. Toca para ver ${O.semana ? 'la semana' : 'el mes'} en grande">${REG('r')}
+      <div class="p-main">
+        <div class="big n ${s.queda < 0 ? 'neg' : ''}" id="queda">${money(s.queda)}</div>
+        <div class="mlabel" style="margin-top:6px">${s.queda < 0 ? 'de mas sobre' : 'disponibles de'} ${money(s.presupuesto)}${L.sufijo}</div>
+        ${bar(uso)}
+        <div class="proof" style="margin-top:12px;font-size:14px;color:var(--muted)">${pct(uso)} gastado${s.sinClasificar ? ' · ' + money(s.sinClasificar) + ' por clasificar' : ''}${L.faltan ? ' · faltan ' + L.faltan + (L.faltan === 1 ? ' dia' : ' dias') : ''}</div>
+      </div>
+      <div class="p-sec">
+        <div class="row-t"><span class="label">${esc(O.titulo)} · ${pct(usoO)}</span><span class="sec-n n ${so.queda < 0 ? 'neg' : ''}">${so.queda < 0 ? 'Pasado ' + money(-so.queda) : money(so.queda)}<span class="sup"> de ${money(so.presupuesto)}</span></span></div>
+        ${bar(usoO, true)}
+      </div>
       <div class="duck-stage" id="duck-stage"><canvas id="duck" role="img"></canvas><div class="duck-say" aria-live="polite" hidden></div></div>
-      ${actual ? pagosTarjeta().filter(t => t.dias <= 5 && !t.pagado).map(t => `<button class="note pay" data-act="pagar" data-card="${esc(t.nombre)}"><span><b>${esc(t.nombre)}:</b> ${t.dias === 0 ? 'hoy es el día límite de pago' : t.dias === 1 ? 'mañana es el día límite de pago' : `pago en ${t.dias} días (${fechaC(t.vence)})`}</span><span class="link">Registrar pago</span></button>`).join('') : ''}
     </section>
-    <section class="blk">${REG('l')}<div class="stack">`;
+    <section class="blk">${REG('l')}<div class="stack">
+      ${actual ? pagosTarjeta().filter(t => t.dias <= 5 && !t.pagado).map(t => `<button class="note pay" data-act="pagar" data-card="${esc(t.nombre)}"><span><b>${esc(t.nombre)}:</b> ${t.dias === 0 ? 'hoy es el día límite de pago' : t.dias === 1 ? 'mañana es el día límite de pago' : `pago en ${t.dias} días (${fechaC(t.vence)})`}</span><span class="link">Registrar pago</span></button>`).join('') : ''}`;
     let i = 0;
     if (R.porClasificar.length) {
       const pc = R.porClasificar, tot = pc.reduce((a, m) => a + m.monto, 0);
@@ -692,7 +703,8 @@
     }
   }
   function voltearPeriodo() {
-    const btn = $('.period');
+    const btn = $('.period'), hero = $('.hero.tap');
+    if (hero && hero.classList.contains('swap-out')) return;
     const cambiar = () => go(() => {
       if (state.periodo === 'semana') state.periodo = 'mes';
       else { state.periodo = 'semana'; state.semana = semanaDeMes(state.mes); state.mes = mesDe(state.semana); }
@@ -700,7 +712,8 @@
     });
     if (REDUCED || !btn) return cambiar();
     btn.classList.add('out'); btn.disabled = true;
-    setTimeout(cambiar, 150);
+    if (hero) hero.classList.add('swap-out');
+    setTimeout(cambiar, 160);
   }
 
   // ---------- eventos globales ----------
@@ -718,6 +731,9 @@
     else if (a === 'edit') { const m = D.mov.find(x => x.id === t.dataset.id); if (m) capture({ ...m, monto: String(m.monto) }, m); }
     else if (a === 'settings') settingsSheet();
     else if (a === 'sync') Store.sync();
+  });
+  app.addEventListener('keydown', e => {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.hero.tap')) { e.preventDefault(); voltearPeriodo(); }
   });
   app.addEventListener('input', e => { if (e.target.id === 'q') { state.q = e.target.value; render(); } });
 

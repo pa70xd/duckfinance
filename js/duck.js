@@ -1,8 +1,9 @@
 // El pato: cuenta cómo va el mes con la resolución de un cartucho pirata de NES ("999 in 1"):
-// sprites de 16×16 con 3 colores + transparente, paleta del 2C02, 8 cuadros por segundo y cada pixel a 4px de pantalla.
+// sprites de 16×16, monocromo (tinta y blanco), 8 cuadros por segundo y cada pixel a 3px de pantalla.
 (function (root) {
-  const S = 4, FPS = 8;
-  const PAL = { k: '#000000', y: '#F8B800', o: '#E45C10', w: '#FCFCFC', b: '#3CBCFC', g: '#BCBCBC', e: '#00A844', l: '#ACACAC' };
+  const S = 3, FPS = 8;
+  const INK = '#0E0E0E', PAPEL = '#FFFFFF', LINEA = '#ACACAC';
+  const PAL = { k: INK, y: PAPEL, o: INK, w: PAPEL, b: INK, g: PAPEL, e: LINEA, l: LINEA };
 
   const WALK = [
     '................',
@@ -38,8 +39,8 @@
   const EYES = { normal: [[11, 3]], closed: [[10, 3], [11, 3]], wide: [[11, 2], [11, 3]], sad: [[10, 3], [11, 4]] };
 
   const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const st = { mood: null, msg: '', x: 6, dir: 1, t: 0, hop: 0, shake: 0, wake: 0, fx: [], W: 80, H: 24, canvas: null, ctx: null, say: null, raf: 0, last: 0, sayTimer: 0, sayText: '', sayUntil: 0 };
-  const HOP = [-2, -4, -5, -5, -4, -2];
+  const st = { mood: null, msg: '', x: 6, dir: 1, t: 0, hop: 0, shake: 0, wake: 0, fx: [], W: 80, H: 20, canvas: null, ctx: null, say: null, raf: 0, last: 0, sayTimer: 0, sayText: '', sayUntil: 0 };
+  const HOP = [-1, -2, -3, -3, -2, -1];
 
   function blit(ctx, spr, ox, oy, flip) {
     const w = spr[0].length;
@@ -91,18 +92,18 @@
     if (st.hop > 0) st.hop--;
     if (m === 'feliz' || (m === 'dormido' && st.wake > 0)) {
       if (st.hop <= 0 && st.t % 2 === 0) st.x += st.dir;
-      if (Math.random() < 1 / 60 && st.hop <= 0) { st.hop = HOP.length; spawn('spark', headX(), st.H - 22, 0, -0.5, 6); }
+      if (Math.random() < 1 / 60 && st.hop <= 0) { st.hop = HOP.length; spawn('spark', headX() + 3 * st.dir, 1, 0, -0.3, 5); }
     } else if (m === 'nervioso') {
       if (st.shake <= 0) st.x += st.dir * 2;
       if (Math.random() < 1 / 40) st.shake = 6;
-      if (st.t % 6 === 0) spawn('drop', st.x + (st.dir > 0 ? 6 : 7), st.H - 20, -st.dir * 0.3, -0.4, 4);
+      if (st.t % 6 === 0) spawn('drop', st.x + (st.dir > 0 ? 6 : 7), 1, -st.dir * 0.3, -0.2, 4);
     } else if (m === 'mal') {
       const centro = Math.round(W / 2) - 8;
       if (st.x !== centro && st.t % 3 === 0) st.x += Math.sign(centro - st.x);
-      if (st.t % 2 === 0) spawn('tear', st.x + 1 + Math.floor(Math.random() * 13), 6, 0, 1.5, 9);
+      if (st.t % 2 === 0) spawn('tear', st.x + 2 + Math.floor(Math.random() * 11), 6, 0, 1, 3);
       if (st.t % 14 === 0) spawn('tear', st.x + (st.dir > 0 ? 11 : 4), st.H - 12, 0, 1, 3);
     } else if (m === 'dormido') {
-      if (st.t % 12 === 0) spawn('z', headX() + (st.dir > 0 ? 2 : -5), st.H - 16, 0.35 * st.dir, -0.5, 14);
+      if (st.t % 12 === 0) spawn('z', headX() + (st.dir > 0 ? 2 : -5), 4, 0.35 * st.dir, -0.4, 10);
     }
     if (st.x < min) { st.x = min; st.dir = 1; }
     if (st.x > max) { st.x = max; st.dir = -1; }
@@ -141,11 +142,11 @@
     if (st.mood === 'dormido') { st.wake = 24; say('EH? ' + st.msg, 2800); return; }
     if (st.mood === 'mal') { st.shake = 6; say(st.msg, 2800); return; }
     st.hop = HOP.length;
-    spawn('spark', headX(), st.H - 22, 0, -0.5, 6);
+    spawn('spark', headX() + 3 * st.dir, 1, 0, -0.3, 5);
     say(st.msg, 2800);
   }
 
-  // stage: contenedor con <canvas> y <div class="duck-say">. announce: dice su mensaje al entrar.
+  // stage: contenedor con <canvas> y <div class="duck-say">. announce: dice su mensaje al entrar. El toque lo maneja la app (poke).
   function mount(stage, mood, msg, announce) {
     const canvas = stage.querySelector('canvas');
     st.canvas = canvas; st.say = stage.querySelector('.duck-say');
@@ -159,13 +160,12 @@
     st.msg = msg;
     canvas.setAttribute('aria-label', 'Pato: ' + msg);
     st.x = Math.max(1, Math.min(st.W - 17, st.x));
-    canvas.onclick = poke;
     if (announce || cambio) setTimeout(() => say(msg, 3600), REDUCED ? 0 : 350);
     else if (st.sayUntil > Date.now()) { // la pantalla se redibujó (p. ej. al sincronizar): el globo sigue donde iba, sin volver a aparecer
       st.say.textContent = st.sayText; st.say.hidden = false;
       clearTimeout(st.sayTimer); st.sayTimer = setTimeout(() => { st.say.hidden = true; }, st.sayUntil - Date.now());
     }
-    step(); draw();
+    step(); draw(); placeSay();
     if (!REDUCED && !st.raf) st.raf = requestAnimationFrame(loop);
   }
 

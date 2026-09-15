@@ -108,12 +108,29 @@ a { color: inherit; }
 .bar.sm { height: 6px; margin-top: 10px; }
 .enter .bar > i { animation: grow .7s var(--ease) both; }
 @keyframes grow { from { transform: scaleX(0); } }
-/* Escenario del pato: canvas de baja resolución escalado ×4 sin suavizado */
-.duck-stage { position: relative; height: 96px; margin: 18px 0 -8px; }
-.duck-stage canvas { display: block; image-rendering: pixelated; cursor: pointer; -webkit-tap-highlight-color: transparent; }
-.duck-say { position: absolute; top: 8px; left: 0; max-width: 64%; background: var(--white); color: var(--black); font-family: var(--f-pixel); font-size: 12px; line-height: 14px; letter-spacing: 0.02em; padding: 5px 7px; margin: 4px; box-shadow: 4px 0 0 var(--black), -4px 0 0 var(--black), 0 4px 0 var(--black), 0 -4px 0 var(--black); pointer-events: none; transform-origin: 0 100%; }
+/* Escenario del pato: canvas de baja resolución escalado ×3 sin suavizado, monocromo */
+.duck-stage { position: relative; height: 60px; margin: 14px 0 -12px; }
+.duck-stage canvas { display: block; image-rendering: pixelated; }
+.duck-say { position: absolute; top: 2px; left: 0; max-width: 66%; background: var(--white); color: var(--black); font-family: var(--f-pixel); font-size: 11px; line-height: 13px; letter-spacing: 0.02em; padding: 4px 6px; margin: 3px; box-shadow: 3px 0 0 var(--black), -3px 0 0 var(--black), 0 3px 0 var(--black), 0 -3px 0 var(--black); pointer-events: none; transform-origin: 0 100%; }
 .duck-say:not(.from-l) { transform-origin: 100% 100%; }
 .duck-say.pop { animation: say .24s steps(4) both; }
+/* Hero tocable: el periodo con foco arriba en grande, el otro chico debajo; al tocar se intercambian */
+.hero.tap { cursor: pointer; -webkit-user-select: none; user-select: none; }
+.hero.tap:focus-visible { outline-offset: -4px; }
+.p-sec { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); }
+.p-sec .row-t { align-items: baseline; }
+.p-sec .label { color: var(--fg); font-weight: 600; }
+.sec-n { font-family: var(--f-pixel); font-size: 20px; line-height: 20px; white-space: nowrap; }
+.sec-n .sup { font-family: var(--f-text); }
+.p-sec .bar { margin-top: 8px; }
+.p-main, .p-sec { transition: transform .16s ease-in, opacity .16s ease-in; transform-origin: 0 0; }
+.hero.swap-out .p-main { transform: translateY(18px) scale(.8); opacity: 0; }
+.hero.swap-out .p-sec { transform: translateY(-18px); opacity: 0; }
+.hero.swap-in .p-main { animation: pmain .42s var(--snap) both; }
+.hero.swap-in .p-sec { animation: psec .36s var(--ease) .08s both; }
+@keyframes pmain { from { transform: translateY(46px) scale(.45); opacity: 0; } }
+@keyframes psec { from { transform: translateY(-26px) scale(1.3); opacity: 0; } }
+.hero.tap:active .p-main { transform: scale(.985); }
 @keyframes say { 0% { transform: scale(.25); } 70% { transform: scale(1.1); } 100% { transform: scale(1); } }
 .note { margin-top: 16px; padding: 12px 14px; border: 1px solid var(--fg); font-size: 14px; line-height: 1.25; color: var(--fg); }
 .note.bad { border-color: var(--error); }
