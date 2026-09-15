@@ -181,7 +181,7 @@ details[open] summary .pi { transform: rotate(90deg); }
 
 /* Teclas de captura: la tecla 3D de Emerald.dev (render PNG), con glifo pixel y etiqueta encima */
 .keys { position: fixed; z-index: 30; right: max(12px, calc(50% - 260px + 12px)); bottom: calc(var(--nav-h) + var(--safe-b) + 10px); display: flex; gap: 6px; align-items: flex-end; }
-.key { position: relative; width: 84px; height: 84px; border: 0; background: transparent; padding: 0; display: grid; place-items: center; align-content: center; gap: 5px; filter: drop-shadow(-6px 8px 10px rgba(0, 0, 0, .28)); transition: transform .1s var(--snap), filter .1s; }
+.key { position: relative; width: 78px; height: 78px; border: 0; background: transparent; padding: 0; display: grid; place-items: center; align-content: center; gap: 5px; filter: drop-shadow(-6px 8px 10px rgba(0, 0, 0, .28)); transition: transform .1s var(--snap), filter .1s; }
 .key::before { content: ""; position: absolute; inset: 0; background: url('../img/key-green.png') center / 100% auto no-repeat; }
 .key.black::before { background-image: url('../img/key-black.png'); }
 .key:active { transform: translateY(3px) scale(.98); filter: drop-shadow(-2px 3px 4px rgba(0, 0, 0, .3)); }

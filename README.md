@@ -5,7 +5,7 @@ App personal para registrar gastos e ingresos desde el teléfono y ver siempre c
 - **Hosting:** GitHub Pages, sin servidor y sin build. HTML, CSS y JS planos.
 - **Datos:** no viven aquí. Viven como JSON en un repo **privado** aparte; la app los lee y escribe con la API de contenidos de GitHub usando un token *fine-grained* que se guarda solo en el teléfono. Este repo no contiene datos personales.
 - **Sin señal:** cada cambio se guarda primero en el teléfono (cola en `localStorage`) y se sube al volver la conexión. Si dos dispositivos escriben el mismo mes, se reaplican los cambios sobre la versión nueva (el `sha` de GitHub evita pisar datos).
-- **Diseño:** sistema visual de Emerald (`design-brand-mrkt`): radio 0, borde 1px, verde `#04D976` como fondo y acento, Overused Grotesk para títulos, Space Grotesk para texto, Minecraft para kickers y métricas, trama de puntos de 24px en cada bloque, iconos pixel (3px sobre cadencia de 4px) y teclas con sombra dura como objeto de acción. Las animaciones son CSS con `prefers-reduced-motion` respetado.
+- **Diseño:** calcado de Emerald.dev (Figma `P3kw7pfjeApvHESiqYbgVk`, frames Mobile): canvas `#F8F9FA` con la trama de 26px al 66 % (100 % sobre negro), líneas de registro `#ACACAC` con cruces, radio 0, botones planos Button/Web v1 (sm 40 · xl 56) sin sombra, Overused Grotesk Bold para títulos, Space Grotesk para texto, Minecraft para kickers y métricas (métrica enfrentada: cifra pixel + etiqueta verde en negrita), iconos pixel en los dos lenguajes del sitio (bits de 4px sobre 5px para navegación; puntos de 1.3px para la flecha de los botones) y la tecla 3D del sitio (PNG exportado de Figma) como objeto de acción. Animaciones CSS con `prefers-reduced-motion` respetado.
 
 ## Estructura
 
@@ -17,7 +17,7 @@ js/logic.js           cálculos: saldos, límites, fondos, deudas a meses, metas
 js/store.js           base de datos en GitHub + copia local + cola de cambios
 js/app.js             pantallas: Límites (inicio), Movimientos, Cuentas, Metas, captura y ajustes
 sw.js                 funciona sin conexión
-fonts/  icons/        fuentes de la marca (con sus licencias) e íconos
+fonts/  icons/  img/  fuentes de la marca (con sus licencias), íconos de la app, trama y teclas 3D de Emerald.dev
 ```
 
 ## Formato de la base (repo privado)
