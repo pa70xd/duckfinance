@@ -57,8 +57,8 @@
     const act = document.activeElement, focusQ = act && act.id === 'q', caret = focusQ ? act.selectionStart : 0;
     const firstKeys = !$('.keys');
     app.innerHTML = `${header()}<main class="${enter ? 'enter' : ''}">${VIEWS[state.vista]()}</main>${nav()}
-      <div class="keys ${firstKeys ? 'in' : ''}"><button class="key green" data-act="nuevo" data-tipo="Gasto" aria-label="Registrar gasto">${I('menos', 20)}<span>Gasto</span></button>
-      <button class="key black" data-act="nuevo" data-tipo="Ingreso" aria-label="Registrar ingreso">${I('mas', 20)}<span>Ingreso</span></button></div>`;
+      <div class="keys ${firstKeys ? 'in' : ''}"><button class="key black" data-act="nuevo" data-tipo="Ingreso" aria-label="Registrar ingreso">${I('mas', 20)}<span>Ingreso</span></button>
+      <button class="key green" data-act="nuevo" data-tipo="Gasto" aria-label="Registrar gasto">${I('menos', 20)}<span>Gasto</span></button></div>`;
     if (!enter) window.scrollTo(0, scroll);
     const q = $('#q'); if (q && focusQ) { q.focus(); q.setSelectionRange(caret, caret); }
     if (enter && state.vista === 'limites') countUp($('#queda'), lastQueda, R.resumen.queda);
@@ -116,14 +116,13 @@
     const actual = state.mes === hoy().slice(0, 7);
     const n = R.cats.filter(c => c.presupuestada).length;
     let h = `<section class="blk hero">${REG('r')}
-      <p class="kicker">${kicker('Limites')}</p>
-      <h1 class="h-hero">${s.queda < 0 ? 'Te pasaste del presupuesto.' : 'Lo que te queda este mes.'}</h1>
-      <div class="mrow"><span class="metric n ${s.queda < 0 ? 'neg' : ''}" id="queda">${money(s.queda)}</span><span class="mlabel">${s.queda < 0 ? 'de más' : 'disponibles'} de ${money(s.presupuesto)}</span></div>
-      <div class="mrow" style="margin-top:12px"><span class="metric sm n ${uso > 1 ? 'neg' : ''}">${pct(uso)}</span><span class="mlabel" style="color:var(--fg)">gastado${actual ? ' · faltan ' + diasRestantes() + ' días' : ''}</span></div>
+      <p class="kicker">${kicker('Limites · ' + mesLargo(state.mes).split(' ')[0])}</p>
+      <div class="big n ${s.queda < 0 ? 'neg' : ''}" id="queda">${money(s.queda)}</div>
+      <div class="mlabel" style="margin-top:6px">${s.queda < 0 ? 'de mas sobre' : 'disponibles de'} ${money(s.presupuesto)}</div>
       ${bar(uso)}
+      <div class="proof" style="margin-top:12px;font-size:14px;color:var(--muted)">${pct(uso)} gastado${actual ? ' · faltan ' + diasRestantes() + ' dias' : ''}</div>
       <div class="badges">${s.rojo ? `<span class="badge mal">${s.rojo} pasad${s.rojo === 1 ? 'a' : 'as'}</span>` : ''}${s.amarillo ? `<span class="badge cerca">${s.amarillo} cerca</span>` : ''}${!s.rojo && !s.amarillo ? `<span class="badge bien">${n} en orden</span>` : ''}</div>
       ${s.comprasMsiMes.length ? `<div class="note bad"><b>Compra nueva a meses: ${money(s.comprasMsiMes.reduce((a, m) => a + m.monto, 0))}.</b> La regla es cero, salvo el seguro del auto en abril.</div>` : ''}
-      ${antes ? `<div class="note">El plan arranca el ${fechaC(D.config.inicio)}. Este mes es solo referencia.</div>` : ''}
     </section>
     <section class="blk">${REG('l')}<div class="stack">
       <p class="kicker">${kicker('Por categoria')}</p>
