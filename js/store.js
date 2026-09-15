@@ -99,7 +99,7 @@
   function commitMessage(ops) {
     if (ops.length === 1 && ops[0].t === 'limite') return `Límite: ${ops[0].nombre} → ${money(ops[0].limite)}`;
     const puts = ops.filter(o => o.t === 'put'), dels = ops.filter(o => o.t === 'del');
-    if (puts.length === 1 && !dels.length) { const r = puts[0].row; return `${r.tipo}: ${money(r.monto)} ${r.categoria || r.destino || ''} (${r.fecha})`.trim(); }
+    if (puts.length === 1 && !dels.length) { const r = puts[0].row; return `${r.tipo}: ${money(r.monto)} ${r.categoria || r.destino || (r.tipo === 'Gasto' ? 'por clasificar' : '')} (${r.fecha})`.replace('  ', ' '); }
     if (dels.length === 1 && !puts.length && dels[0].label) { const r = dels[0].label; return dels[0].movedTo ? `Movido: ${r.tipo} ${money(r.monto)} (${r.fecha} → ${dels[0].movedTo})` : `Borrado: ${r.tipo} ${money(r.monto)} (${r.fecha})`; }
     return `DuckFinance: ${puts.length} guardados, ${dels.length} borrados`;
   }

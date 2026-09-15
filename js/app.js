@@ -26,13 +26,14 @@
   // ---------- estado ----------
   const store = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (e) { return d; } };
   const state = { vista: store('df.vista', 'limites'), mes: hoy().slice(0, 7), filtroLim: 'todos', filtroMov: 'todos', q: '' };
-  let D = null, R = null;
+  let D = null, R = null, IDX = null;
   const app = document.getElementById('app');
 
   function recompute() {
     D = Store.data();
     if (!D) { R = null; return; }
     R = computeAll(D, state.mes, hoy());
+    IDX = Classify.build(D.mov, D.categorias);
   }
   function mesesDisponibles() {
     const s = new Set(D ? D.mov.map(m => m.fecha.slice(0, 7)) : []);
@@ -120,7 +121,7 @@
       <div class="big n ${s.queda < 0 ? 'neg' : ''}" id="queda">${money(s.queda)}</div>
       <div class="mlabel" style="margin-top:6px">${s.queda < 0 ? 'de mas sobre' : 'disponibles de'} ${money(s.presupuesto)}</div>
       ${bar(uso)}
-      <div class="proof" style="margin-top:12px;font-size:14px;color:var(--muted)">${pct(uso)} gastado${actual ? ' · faltan ' + diasRestantes() + ' dias' : ''}</div>
+      <div class="proof" style="margin-top:12px;font-size:14px;color:var(--muted)">${pct(uso)} gastado${s.sinClasificar ? ' · ' + money(s.sinClasificar) + ' por clasificar' : ''}${actual ? ' · faltan ' + diasRestantes() + ' dias' : ''}</div>
       <div class="badges">${s.rojo ? `<span class="badge mal">${s.rojo} pasad${s.rojo === 1 ? 'a' : 'as'}</span>` : ''}${s.amarillo ? `<span class="badge cerca">${s.amarillo} cerca</span>` : ''}${!s.rojo && !s.amarillo ? `<span class="badge bien">${n} en orden</span>` : ''}</div>
       ${s.comprasMsiMes.length ? `<div class="note bad"><b>Compra nueva a meses: ${money(s.comprasMsiMes.reduce((a, m) => a + m.monto, 0))}.</b> La regla es cero, salvo el seguro del auto en abril.</div>` : ''}
     </section>
@@ -129,6 +130,13 @@
       ${tabs('flim', [['todos', 'Todos'], ['riesgo', 'En riesgo']], state.filtroLim, 'Filtro')}`;
     const grupos = [...new Set(R.cats.filter(c => c.presupuestada).map(c => c.grupo))];
     let alguno = false;
+    if (R.porClasificar.length && state.filtroLim === 'todos') {
+      const pc = R.porClasificar, tot = pc.reduce((a, m) => a + m.monto, 0);
+      h += `<div class="group warnb"><div class="group-h"><span class="proof">Por clasificar</span><span class="label n">${pc.length} · ${money(tot)}</span></div>
+        ${pc.slice(0, 4).map(m => `<button class="row" data-act="clasificar" data-id="${esc(m.id)}"><div class="row-t"><span class="name">${esc(m.concepto)}</span><span class="amt n">${money(m.monto, true)}</span></div><div class="sup"><span>${fechaC(m.fecha)} · ${esc(m.cuenta)}</span><span>Toca para clasificar</span></div></button>`).join('')}
+        ${pc.length > 4 ? `<div class="empty">y ${pc.length - 4} más</div>` : ''}
+        <div class="pad" style="padding-top:4px"><button class="btn primary block" data-act="clasificar">Clasificar ahora${Dot('flecha')}</button></div></div>`;
+    }
     for (const g of grupos) {
       let cs = R.cats.filter(c => c.grupo === g && c.presupuestada);
       if (state.filtroLim === 'riesgo') cs = cs.filter(c => c.estado === 'mal' || c.estado === 'cerca');
@@ -199,7 +207,7 @@
     const detalle = m.destino ? `${m.cuenta} → ${m.destino}` : [m.categoria, m.cuenta].filter(Boolean).join(' · ');
     return `<button class="row" data-act="edit" data-id="${esc(m.id)}"><div class="row-t"><span class="name">${esc(m.concepto || m.categoria || m.tipo)}</span>
       <span class="amt n ${signo === '+' ? 'pos' : ''}">${signo}${money(m.monto, true)}</span></div>
-      <div class="sup"><span>${esc(detalle)}</span><span>${m.tipo !== 'Gasto' ? `<span class="tag">${esc(m.tipo)}</span>` : ''}${m._pendiente ? '<span class="tag pend">Pendiente</span>' : ''}</span></div></button>`;
+      <div class="sup"><span>${esc(detalle)}</span><span>${m.tipo !== 'Gasto' ? `<span class="tag">${esc(m.tipo)}</span>` : ''}${!m.categoria && m.tipo === 'Gasto' ? '<span class="tag pend">Por clasificar</span>' : ''}${m._pendiente ? '<span class="tag">Sin subir</span>' : ''}</span></div></button>`;
   }
 
   // ---------- CUENTAS ----------
@@ -274,21 +282,27 @@
   const sheetHead = t => `<div class="blk sheet-h"><p class="kicker">${kicker(t)}</p><button class="iconbtn" data-act="close" aria-label="Cerrar">${I('cerrar', 18)}</button></div>`;
 
   // ---------- captura: gasto, ingreso y demás ----------
+  function favoritasGasto() {
+    const conteo = {};
+    for (const m of D.mov) if (m.tipo === 'Gasto' && m.categoria && m.fecha >= addMonths(hoy(), -4)) conteo[m.categoria] = (conteo[m.categoria] || 0) + 1;
+    return gastables().filter(c => c.tipo !== 'Sin presupuesto' || c.nombre === 'PC y tecnología').map(c => c.nombre).sort((a, b) => (conteo[b] || 0) - (conteo[a] || 0)).slice(0, 8);
+  }
+  const gastables = () => D.categorias.filter(c => ['Mensual', 'Fondo acumulable', 'Tope anual', 'Sin presupuesto', 'Ahorro'].includes(c.tipo) && c.grupo !== 'Histórico');
+
+  // Captura rápida: monto + qué fue. La categoría y la cuenta las propone el historial; si no reconoce nada,
+  // el gasto se guarda "por clasificar" y se resuelve después desde Límites.
   function capture(prefill, editing) {
     const cuentas = D.cuentas;
     const credito = cuentas.filter(c => c.tipo === 'Crédito').map(c => c.nombre);
     const noCred = cuentas.filter(c => c.tipo !== 'Crédito').map(c => c.nombre);
-    const cats = D.categorias;
-    const conteo = {};
-    for (const m of D.mov) if (m.tipo === 'Gasto' && m.fecha >= addMonths(hoy(), -4)) conteo[m.categoria] = (conteo[m.categoria] || 0) + 1;
-    const gastables = cats.filter(c => ['Mensual', 'Fondo acumulable', 'Tope anual', 'Sin presupuesto', 'Ahorro'].includes(c.tipo) && c.grupo !== 'Histórico');
-    const favoritas = gastables.filter(c => c.tipo !== 'Sin presupuesto' || c.nombre === 'PC y tecnología').map(c => c.nombre).sort((a, b) => (conteo[b] || 0) - (conteo[a] || 0)).slice(0, 8);
+    const cats = D.categorias, favoritas = favoritasGasto();
     const ultimaCta = store('df.cta', 'RappiCard');
+    const principales = ['Gasto', 'Ingreso'];
 
     const f = Object.assign({ tipo: 'Gasto', monto: '', categoria: '', cuenta: '', destino: '', concepto: '', fecha: hoy(), nota: '' }, prefill || {});
     if (!f.cuenta) f.cuenta = f.tipo === 'Ingreso' ? 'BBVA débito' : (cuentas.some(c => c.nombre === ultimaCta) ? ultimaCta : cuentas[0].nombre);
-    const principales = ['Gasto', 'Ingreso'];
-    let mas = !principales.includes(f.tipo);
+    let manualCat = !!(prefill && prefill.categoria), manualCta = !!(prefill && prefill.cuenta);
+    let mas = !principales.includes(f.tipo), elegir = !!editing, detalles = !!editing, cambiarCta = false;
 
     const titulo = () => (editing ? 'Editar ' : 'Nuevo ') + f.tipo.toLowerCase();
     const el = openSheet(`<div id="caph"></div><form class="blk form" id="cap" novalidate></form>`, true);
@@ -304,9 +318,34 @@
     function catsPara(tipo) {
       if (tipo === 'Ingreso') return { chips: cats.filter(c => c.tipo === 'Ingreso').map(c => c.nombre), todas: [] };
       if (['Pago de tarjeta', 'Transferencia', 'Ajuste de saldo'].includes(tipo)) return null;
-      return { chips: favoritas, todas: gastables.map(c => c.nombre).sort((a, b) => a.localeCompare(b, 'es')) };
+      return { chips: favoritas, todas: gastables().map(c => c.nombre).sort((a, b) => a.localeCompare(b, 'es')) };
     }
     const chips = (name, list, val) => `<div class="chips" data-chips="${name}">${list.map(n => `<button type="button" class="chip" data-v="${esc(n)}" aria-pressed="${n === val}">${esc(n)}</button>`).join('')}</div>`;
+    const parseMonto = v => Math.round(parseFloat(String(v).replace(/[$,\s]/g, '')) * 100) / 100;
+
+    // Propuesta del historial para el texto actual (solo gastos, solo mientras el usuario no elija a mano)
+    function proponer() {
+      if (f.tipo !== 'Gasto') return [];
+      const sugs = f.concepto.trim() ? Classify.suggest(IDX, f.concepto, 3) : [];
+      if (!manualCat) f.categoria = sugs[0] ? sugs[0].categoria : '';
+      if (!manualCta && sugs[0] && sugs[0].cuenta) f.cuenta = sugs[0].cuenta;
+      return sugs;
+    }
+    function paintSug() {
+      const box = $('#sug', el); if (!box) return;
+      const sugs = proponer();
+      if (elegir) { box.innerHTML = ''; }
+      else if (sugs.length) {
+        box.innerHTML = `<div class="label" style="margin-bottom:8px">Categoría propuesta</div>${chips('categoria', [...new Set([...sugs.map(x => x.categoria), ...(f.categoria && !sugs.some(x => x.categoria === f.categoria) ? [f.categoria] : [])])], f.categoria)}<button type="button" class="link" data-act="elegir">Otra categoría</button>`;
+      } else {
+        box.innerHTML = f.concepto.trim()
+          ? `<div class="hint">No reconozco <b>${esc(f.concepto.trim())}</b>. Se guarda <b>por clasificar</b> y lo resuelves después, o <button type="button" class="link" data-act="elegir">elige la categoría</button>.</div>`
+          : `<div class="hint">Escribe qué fue y la app propone la categoría. Si lo dejas vacío, queda <b>por clasificar</b>. <button type="button" class="link" data-act="elegir">Elegir categoría</button></div>`;
+      }
+      const cl = $('#ctaline', el);
+      if (cl) cl.innerHTML = cambiarCta ? `<div class="label" style="margin-bottom:8px">Con qué pagaste</div>${chips('cuenta', cuentasPara('Gasto').de, f.cuenta)}` : `<div class="hint">Con <b>${esc(f.cuenta)}</b> · <button type="button" class="link" data-act="cta">cambiar</button></div>`;
+      impact();
+    }
 
     function paint() {
       $('#caph', el).innerHTML = sheetHead(titulo());
@@ -315,24 +354,32 @@
       if (ctas.a && !ctas.a.includes(f.destino)) f.destino = ctas.a.find(n => n !== f.cuenta) || '';
       if (!ctas.a) f.destino = '';
       if (!cs) f.categoria = '';
+      const rapido = f.tipo === 'Gasto';
       const verbo = { Gasto: 'Con qué pagaste', Ingreso: 'A dónde llegó', Reembolso: 'A dónde llegó', 'Pago de tarjeta': 'Desde', Transferencia: 'Desde' }[f.tipo] || 'Cuenta';
       $('#cap', el).innerHTML = `
         ${tabs('tipo', [['Gasto', 'Gasto'], ['Ingreso', 'Ingreso'], ['mas', 'Otro']], mas ? 'mas' : f.tipo, 'Tipo', 'data-tipo')}
         ${mas ? `<div class="field"><span class="label">Tipo de movimiento</span>${chips('tipo', TIPOS.filter(t => !principales.includes(t)), f.tipo)}</div>` : ''}
         <label class="field"><span class="label">Monto</span><span class="amount"><span>$</span><input id="monto" inputmode="decimal" autocomplete="off" placeholder="0" value="${esc(f.monto)}" aria-label="Monto"></span></label>
-        ${cs ? `<div class="field"><span class="label">Categoría</span>${chips('categoria', [...new Set([...(f.categoria && !cs.chips.includes(f.categoria) ? [f.categoria] : []), ...cs.chips])], f.categoria)}
+        ${rapido ? `<label class="field"><span class="label">Qué fue</span><input class="input" id="concepto" maxlength="80" placeholder="Oxxo, tacos, gasolina…" autocomplete="off" value="${esc(f.concepto)}"></label>
+          <div id="sug"></div>
+          ${elegir ? `<div class="field"><span class="label">Categoría</span>${chips('categoria', [...new Set([...(f.categoria ? [f.categoria] : []), ...cs.chips])], f.categoria)}
+            <select class="select" id="catall" style="margin-top:8px" aria-label="Otra categoría"><option value="">Otra categoría…</option>${cs.todas.map(n => `<option ${n === f.categoria ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></div>` : ''}
+          <div id="impact"></div>
+          <div id="ctaline"></div>` : ''}
+        ${!rapido && cs ? `<div class="field"><span class="label">Categoría</span>${chips('categoria', [...new Set([...(f.categoria && !cs.chips.includes(f.categoria) ? [f.categoria] : []), ...cs.chips])], f.categoria)}
           ${cs.todas.length ? `<select class="select" id="catall" style="margin-top:8px" aria-label="Otra categoría"><option value="">Otra categoría…</option>${cs.todas.map(n => `<option ${n === f.categoria ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>` : ''}
           <div id="impact" style="margin-top:10px"></div></div>` : ''}
-        <div class="field"><span class="label">${verbo}</span>${chips('cuenta', ctas.de, f.cuenta)}</div>
+        ${!rapido ? `<div class="field"><span class="label">${verbo}</span>${chips('cuenta', ctas.de, f.cuenta)}</div>` : ''}
         ${ctas.a ? `<div class="field"><span class="label">Hacia</span>${chips('destino', ctas.a.filter(n => n !== f.cuenta), f.destino)}</div>` : ''}
-        <div class="two"><label class="field"><span class="label">Qué fue</span><input class="input" id="concepto" maxlength="80" placeholder="Opcional" value="${esc(f.concepto)}"></label>
+        ${rapido && !detalles ? `<button type="button" class="link" data-act="detalles">Fecha, nota…</button>` : `
+        <div class="two">${rapido ? '' : `<label class="field"><span class="label">Qué fue</span><input class="input" id="concepto" maxlength="80" placeholder="Opcional" value="${esc(f.concepto)}"></label>`}
           <label class="field"><span class="label">Fecha</span><input class="input" id="fecha" type="date" value="${esc(f.fecha)}"></label></div>
-        <label class="field"><span class="label">Nota</span><input class="input" id="nota" maxlength="140" placeholder="Opcional" value="${esc(f.nota)}"></label>
+        <label class="field"><span class="label">Nota</span><input class="input" id="nota" maxlength="140" placeholder="Opcional" value="${esc(f.nota)}"></label>`}
         <div class="err" id="err" role="alert"></div>
         <button class="btn primary xl block" type="submit">Guardar ${f.tipo === 'Gasto' || f.tipo === 'Ingreso' ? f.tipo.toLowerCase() : ''}${Dot('flecha')}</button>
         ${editing ? `<button class="btn danger block" type="button" data-del="1">Borrar movimiento${Dot('cerrar')}</button>
           <p class="sup" style="margin:0">Origen: ${esc(editing.origen || 'app')}${editing.creado ? ' · capturado ' + esc(editing.creado.slice(0, 16).replace('T', ' ')) : ''}</p>` : ''}`;
-      impact();
+      if (rapido) paintSug(); else impact();
     }
     function read() {
       const g = id => $('#' + id, el);
@@ -341,7 +388,6 @@
       if (g('fecha')) f.fecha = g('fecha').value;
       if (g('nota')) f.nota = g('nota').value;
     }
-    const parseMonto = v => Math.round(parseFloat(String(v).replace(/[$,\s]/g, '')) * 100) / 100;
     function impact() {
       const box = $('#impact', el); if (!box) return;
       const c = f.categoria && R && computeAll(D, (f.fecha || hoy()).slice(0, 7), hoy()).cats.find(x => x.nombre === f.categoria);
@@ -360,31 +406,42 @@
 
     el.addEventListener('input', e => {
       read();
-      if (e.target.id === 'monto' || e.target.id === 'fecha') impact();
       $('#err', el).textContent = '';
+      if (e.target.id === 'concepto') { manualCat = false; paintSug(); }
+      else if (e.target.id === 'monto' || e.target.id === 'fecha') impact();
     });
-    el.addEventListener('change', e => { if (e.target.id === 'catall' && e.target.value) { read(); f.categoria = e.target.value; paint(); } });
+    el.addEventListener('change', e => { if (e.target.id === 'catall' && e.target.value) { read(); f.categoria = e.target.value; manualCat = true; paint(); } });
     el.addEventListener('click', e => {
       const t = e.target.closest('button'); if (!t) return;
       if (t.dataset.act === 'close') return closeSheet();
+      if (t.dataset.act === 'elegir') { read(); elegir = true; manualCat = !!f.categoria; return paint(); }
+      if (t.dataset.act === 'cta') { read(); cambiarCta = true; return paintSug(); }
+      if (t.dataset.act === 'detalles') { read(); detalles = true; return paint(); }
       if (t.dataset.tipo) {
         read();
         if (t.dataset.tipo === 'mas') { mas = true; if (principales.includes(f.tipo)) f.tipo = 'Reembolso'; }
-        else { mas = false; if (f.tipo !== t.dataset.tipo) { f.tipo = t.dataset.tipo; f.categoria = ''; f.cuenta = f.tipo === 'Ingreso' ? 'BBVA débito' : ultimaCta; } }
+        else { mas = false; if (f.tipo !== t.dataset.tipo) { f.tipo = t.dataset.tipo; f.categoria = ''; manualCat = false; f.cuenta = f.tipo === 'Ingreso' ? 'BBVA débito' : ultimaCta; } }
         return paint();
       }
       const group = t.parentElement && t.parentElement.dataset.chips;
-      if (group) { read(); f[group] = t.dataset.v; if (group === 'tipo') f.categoria = ''; return paint(); }
+      if (group) {
+        read(); f[group] = t.dataset.v;
+        if (group === 'tipo') f.categoria = '';
+        if (group === 'categoria') manualCat = true;
+        if (group === 'cuenta') manualCta = true;
+        if (f.tipo === 'Gasto' && (group === 'categoria' || group === 'cuenta') && !elegir) { if (group === 'cuenta') cambiarCta = false; return paintSug(); }
+        return paint();
+      }
       if (t.dataset.del) {
         if (!confirm('¿Borrar este movimiento? Queda registrado en el historial del repo.')) return;
         Store.deleteMovement(editing); closeSheet(); toast('Borrado.'); return;
       }
     });
     el.addEventListener('submit', e => {
-      e.preventDefault(); read();
+      e.preventDefault(); read(); proponer();
       const monto = parseMonto(f.monto), err = $('#err', el);
       if (!(monto > 0)) { err.textContent = 'Escribe el monto.'; $('#monto', el).focus(); return; }
-      if (catsPara(f.tipo) && !f.categoria) { err.textContent = 'Elige una categoría.'; return; }
+      if (catsPara(f.tipo) && f.tipo !== 'Gasto' && !f.categoria) { err.textContent = 'Elige una categoría.'; return; }
       if (!/^\d{4}-\d{2}-\d{2}$/.test(f.fecha)) { err.textContent = 'Revisa la fecha.'; return; }
       if (cuentasPara(f.tipo).a && !f.destino) { err.textContent = 'Elige a qué cuenta va.'; return; }
       const row = Object.assign({}, editing || {}, {
@@ -403,10 +460,45 @@
       let msg = editing ? 'Cambios guardados.' : 'Guardado.';
       if (c && c.tipo === 'Mensual') msg += ` ${c.nombre}: ${c.restante < 0 ? 'te pasaste por ' + money(-c.restante) : 'te quedan ' + money(c.restante)} este mes.`;
       else if (c && c.tipo === 'Fondo acumulable') msg += ` Fondo de ${c.nombre}: ${money(c.acumulado)}.`;
+      else if (!row.categoria && row.tipo === 'Gasto') msg += ` Queda por clasificar (${R.porClasificar.length}).`;
       toast(msg);
     });
     paint();
     if (!editing) setTimeout(() => { const m = $('#monto', el); if (m) m.focus(); }, 60);
+  }
+
+  // Clasificar lo pendiente, uno por uno: propuestas del historial + favoritas; un toque guarda y pasa al siguiente.
+  function classifySheet(startId) {
+    const pend = R.porClasificar;
+    if (!pend.length) { closeSheet(); toast('Nada por clasificar.'); return; }
+    let i = Math.max(0, pend.findIndex(m => m.id === startId));
+    const m = pend[i];
+    const sugs = Classify.suggest(IDX, m.concepto, 3).map(x => x.categoria);
+    const lista = [...new Set([...sugs, ...favoritasGasto()])].slice(0, 10);
+    const todas = gastables().map(c => c.nombre).sort((a, b) => a.localeCompare(b, 'es'));
+    const el = openSheet(`${sheetHead('Por clasificar')}<div class="blk stack" style="padding-bottom:calc(24px + var(--safe-b))">
+      <div><div class="label">${i + 1} de ${pend.length} · ${fechaC(m.fecha)} · ${esc(m.cuenta)}</div><h2 class="h-2" style="margin-top:10px">${esc(m.concepto)}</h2>
+        <div class="mrow" style="margin-top:12px"><span class="metric sm n">${money(m.monto, true)}</span>${sugs.length ? `<span class="mlabel" style="color:var(--badge-green)">parece ${esc(sugs[0])}</span>` : ''}</div></div>
+      <div><div class="label" style="margin-bottom:8px">${sugs.length ? 'Propuestas y frecuentes' : 'Frecuentes'}</div><div class="chips" data-chips="cat">${lista.map(n => `<button type="button" class="chip" data-v="${esc(n)}">${esc(n)}</button>`).join('')}</div>
+        <select class="select" id="catall" style="margin-top:8px" aria-label="Otra categoría"><option value="">Otra categoría…</option>${todas.map(n => `<option>${esc(n)}</option>`).join('')}</select></div>
+      <div class="two"><button class="btn secondary" data-act="editar">Editar${Dot('flecha')}</button><button class="btn secondary" data-act="saltar" ${pend.length < 2 ? 'disabled' : ''}>Saltar${Dot('flecha')}</button></div>
+    </div>`, true);
+    sheetCtx = { type: 'clasificar' };
+    const guardar = cat => {
+      Store.saveMovement({ ...m, categoria: cat, editado: new Date().toISOString() }, m);
+      recompute();
+      const c = R.cats.find(x => x.nombre === cat);
+      toast(`${esc(m.concepto)} → ${cat}` + (c && c.tipo === 'Mensual' ? ` · quedan ${money(c.restante)}` : ''));
+      if (R.porClasificar.length) classifySheet(); else { closeSheet(); render(); }
+    };
+    el.addEventListener('click', e => {
+      const t = e.target.closest('button'); if (!t) return;
+      if (t.dataset.act === 'close') closeSheet();
+      else if (t.dataset.act === 'saltar') classifySheet(pend[(i + 1) % pend.length].id);
+      else if (t.dataset.act === 'editar') { closeSheet(); capture({ ...m, monto: String(m.monto) }, m); }
+      else if (t.parentElement && t.parentElement.dataset.chips === 'cat') guardar(t.dataset.v);
+    });
+    $('#catall', el).addEventListener('change', e => { if (e.target.value) guardar(e.target.value); });
   }
 
   // ---------- detalle de categoría ----------
@@ -520,6 +612,7 @@
     else if (a === 'fmov') go(() => { state.filtroMov = t.dataset.v; });
     else if (a === 'nuevo') capture({ tipo: t.dataset.tipo, fecha: state.mes === hoy().slice(0, 7) ? hoy() : state.mes + '-01' });
     else if (a === 'cat') categorySheet(t.dataset.n);
+    else if (a === 'clasificar') classifySheet(t.dataset.id);
     else if (a === 'edit') { const m = D.mov.find(x => x.id === t.dataset.id); if (m) capture({ ...m, monto: String(m.monto) }, m); }
     else if (a === 'settings') settingsSheet();
     else if (a === 'sync') Store.sync();

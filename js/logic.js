@@ -91,6 +91,10 @@
     });
 
     const enMes = mov.filter(m => monthKey(m.fecha) === mes);
+    // Gastos capturados sin categoría: cuentan contra el presupuesto hasta que se clasifiquen
+    const sinCat = m => (m.tipo === 'Gasto' || m.tipo === 'Compra a meses') && !m.categoria;
+    const porClasificar = mov.filter(sinCat).sort((a, b) => b.fecha.localeCompare(a.fecha) || (b.creado || '').localeCompare(a.creado || ''));
+    const sinClasificarMes = enMes.filter(sinCat).reduce((a, m) => a + m.monto, 0);
     const ingresos = enMes.filter(m => m.tipo === 'Ingreso').reduce((a, m) => a + m.monto, 0);
     const gastoPropio = enMes.filter(m => !NEUTRAL.has(m.categoria)).reduce((a, m) => a + categoryEffect(m), 0);
     const presupuesto = cats.filter(c => c.presupuestada).reduce((a, c) => a + c.limite, 0);
@@ -115,10 +119,10 @@
     const debes = deudaTarjetas + (auto ? auto.pendiente : 0);
 
     return {
-      mes, hoy, cuentas, cats, deudas, metas,
+      mes, hoy, cuentas, cats, deudas, metas, porClasificar,
       movMes: enMes.slice().sort((a, b) => b.fecha.localeCompare(a.fecha) || (b.creado || '').localeCompare(a.creado || '')),
       resumen: { ingresos: r2(ingresos), gastoPropio: r2(gastoPropio), presupuesto: r2(presupuesto), gastadoPresup: r2(gastadoPresup),
-        queda: r2(presupuesto - gastadoPresup), cuotasMes: r2(cuotasMes), comprasMsiMes,
+        queda: r2(presupuesto - gastadoPresup - sinClasificarMes), sinClasificar: r2(sinClasificarMes), cuotasMes: r2(cuotasMes), comprasMsiMes,
         rojo: cats.filter(c => c.estado === 'mal').length, amarillo: cats.filter(c => c.estado === 'cerca').length,
         tienes: r2(tienes), deudaTarjetas: r2(deudaTarjetas), debes: r2(debes), neto: r2(tienes - debes),
         pendienteMsi: r2(deudas.filter(d => !d.auto).reduce((a, d) => a + d.pendiente, 0)),

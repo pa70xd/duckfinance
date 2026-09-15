@@ -7,12 +7,17 @@ App personal para registrar gastos e ingresos desde el teléfono y ver siempre c
 - **Sin señal:** cada cambio se guarda primero en el teléfono (cola en `localStorage`) y se sube al volver la conexión. Si dos dispositivos escriben el mismo mes, se reaplican los cambios sobre la versión nueva (el `sha` de GitHub evita pisar datos).
 - **Diseño:** calcado de Emerald.dev (Figma `P3kw7pfjeApvHESiqYbgVk`, frames Mobile): canvas `#F8F9FA` con la trama de 26px al 66 % (100 % sobre negro), líneas de registro `#ACACAC` con cruces, radio 0, botones planos Button/Web v1 (sm 40 · xl 56) sin sombra, Overused Grotesk Bold para títulos, Space Grotesk para texto, Minecraft para kickers y métricas (métrica enfrentada: cifra pixel + etiqueta verde en negrita), iconos pixel en los dos lenguajes del sitio (bits de 4px sobre 5px para navegación; puntos de 1.3px para la flecha de los botones) y la tecla 3D del sitio (PNG exportado de Figma) como objeto de acción. Animaciones CSS con `prefers-reduced-motion` respetado.
 
+## Captura rápida
+
+Tecla **Gasto** → monto y "qué fue". La app propone categoría y cuenta a partir del historial (`js/classify.js`); si no reconoce el texto, el gasto se guarda **por clasificar** (sin `categoria`), descuenta del presupuesto del mes y aparece arriba en Límites para resolverlo de un toque. Cada corrección alimenta el historial, así que la app aprende.
+
 ## Estructura
 
 ```
 index.html            shell (CSP: solo se conecta a api.github.com)
 css/app.css           tokens y componentes
 js/icons.js           iconos pixel (bitmaps → SVG con bordes duros)
+js/classify.js        propone categoría y cuenta por historial (concepto exacto, palabras y vocabulario semilla)
 js/logic.js           cálculos: saldos, límites, fondos, deudas a meses, metas (sin DOM)
 js/store.js           base de datos en GitHub + copia local + cola de cambios
 js/app.js             pantallas: Límites (inicio), Movimientos, Cuentas, Metas, captura y ajustes

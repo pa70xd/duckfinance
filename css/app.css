@@ -239,6 +239,15 @@ main.enter { animation: fade .25s var(--ease) both; }
 .inv .input { background: var(--gray-100); border-color: var(--gray-80); color: var(--white); }
 .inv .input:focus { border-color: var(--emerald); }
 
+.link { background: none; border: 0; padding: 0; font-weight: 600; font-size: 14px; text-transform: uppercase; color: var(--accent-ink); text-decoration: underline; text-underline-offset: 3px; }
+.hint { font-size: 14px; line-height: 1.3; color: var(--muted); }
+.hint b { color: var(--fg); font-weight: 600; }
+.group.warnb { border-color: var(--warn-ink); }
+.group.warnb .group-h { border-bottom-color: var(--warn-ink); }
+#sug { display: grid; gap: 10px; }
+#sug .link { justify-self: start; }
+#impact:empty, #sug:empty { display: none; }
+
 /* Carga: esqueleto */
 .sk { background: linear-gradient(90deg, var(--gray-30) 25%, var(--gray-20) 50%, var(--gray-30) 75%); background-size: 200% 100%; animation: shimmer 1.3s linear infinite; height: 14px; }
 @keyframes shimmer { to { background-position: -200% 0; } }
