@@ -7,6 +7,12 @@ App personal para registrar gastos e ingresos desde el teléfono y ver siempre c
 - **Sin señal:** cada cambio se guarda primero en el teléfono (cola en `localStorage`) y se sube al volver la conexión. Si dos dispositivos escriben el mismo mes, se reaplican los cambios sobre la versión nueva (el `sha` de GitHub evita pisar datos).
 - **Diseño:** calcado de Emerald.dev (Figma `P3kw7pfjeApvHESiqYbgVk`, frames Mobile): canvas `#F8F9FA` con la trama de 26px al 66 % (100 % sobre negro), líneas de registro `#ACACAC` con cruces, radio 0, botones planos Button/Web v1 (sm 40 · xl 56) sin sombra, Overused Grotesk Bold para títulos, Space Grotesk para texto, Minecraft para kickers y métricas (métrica enfrentada: cifra pixel + etiqueta verde en negrita), iconos pixel en los dos lenguajes del sitio (bits de 4px sobre 5px para navegación; puntos de 1.3px para la flecha de los botones) y la tecla 3D del sitio (PNG exportado de Figma) como objeto de acción. Animaciones CSS con `prefers-reduced-motion` respetado.
 
+## Límites
+
+Abre en la **semana** actual (lunes a domingo). Tocar el periodo lo voltea a **mes** y viceversa; las flechas avanzan de semana en semana o de mes en mes. Lo variable se reparte por día; los cargos fijos (`dias` en la categoría: días del mes en que se cobran) cuentan completos en su semana. Las categorías van ordenadas de la más cerca de su límite a la más lejana; los fijos ya cobrados, al final. Los fondos acumulables van aparte.
+
+El **pato** (`js/duck.js`, sprites 16×16 con paleta de NES) cuenta cómo va el mes: feliz, nervioso (va más rápido que el mes o con varias categorías pasadas), mal (se pasó del total) o dormido (sin gastos). Al tocarlo dice por qué.
+
 ## Captura rápida
 
 Tecla **Gasto** → monto y "qué fue". La app propone categoría y cuenta a partir del historial (`js/classify.js`); si no reconoce el texto, el gasto se guarda **por clasificar** (sin `categoria`), descuenta del presupuesto del mes y aparece arriba en Límites para resolverlo de un toque. Cada corrección alimenta el historial, así que la app aprende.

@@ -86,6 +86,17 @@ a { color: inherit; }
 .iconbtn:disabled { opacity: .25; pointer-events: none; }
 .month { display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; margin-top: 4px; }
 .month .h-case { text-align: center; font-size: 20px; line-height: 20px; }
+.month .pl { display: inline-block; }
+/* Periodo: se toca para voltear semana ⇄ mes, como tarjeta */
+.period { justify-self: center; display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 6px; background: none; border: 0; color: var(--fg); perspective: 320px; }
+.period .pi { color: var(--gray-70); transition: transform .3s var(--snap); }
+.period:active .pl { transform: scale(.95); }
+.period.out .pl { animation: flipout .15s ease-in both; }
+.period.out .pi { transform: rotate(180deg); }
+.period.in .pl { animation: flipin .34s var(--snap) both; }
+@keyframes flipout { to { transform: rotateX(90deg); opacity: .3; } }
+@keyframes flipin { from { transform: rotateX(-90deg); opacity: .3; } }
+.pl.dir-r { animation: slide-r .3s var(--ease) both; } .pl.dir-l { animation: slide-l .3s var(--ease) both; }
 
 /* Hero de límites: el número manda. Metric display en Minecraft, grande; el límite como etiqueta verde debajo. */
 .hero { padding-top: 14px; }
@@ -97,11 +108,13 @@ a { color: inherit; }
 .bar.sm { height: 6px; margin-top: 10px; }
 .enter .bar > i { animation: grow .7s var(--ease) both; }
 @keyframes grow { from { transform: scaleX(0); } }
-.badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
-.badge { display: inline-flex; align-items: center; height: 24px; padding: 0 12px; border: 1px solid currentColor; font-weight: 500; font-size: 14px; line-height: 1; text-transform: uppercase; white-space: nowrap; }
-.badge.bien { color: var(--badge-green); } .inv .badge.bien { color: var(--emerald); }
-.badge.cerca { color: var(--warn-ink); } .inv .badge.cerca { color: var(--warn); }
-.badge.mal { color: var(--error-ink); } .inv .badge.mal { color: var(--error-inv); }
+/* Escenario del pato: canvas de baja resolución escalado ×4 sin suavizado */
+.duck-stage { position: relative; height: 96px; margin: 18px 0 -8px; }
+.duck-stage canvas { display: block; image-rendering: pixelated; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.duck-say { position: absolute; top: 8px; left: 0; max-width: 64%; background: var(--white); color: var(--black); font-family: var(--f-pixel); font-size: 12px; line-height: 14px; letter-spacing: 0.02em; padding: 5px 7px; margin: 4px; box-shadow: 4px 0 0 var(--black), -4px 0 0 var(--black), 0 4px 0 var(--black), 0 -4px 0 var(--black); pointer-events: none; transform-origin: 0 100%; }
+.duck-say:not(.from-l) { transform-origin: 100% 100%; }
+.duck-say.pop { animation: say .24s steps(4) both; }
+@keyframes say { 0% { transform: scale(.25); } 70% { transform: scale(1.1); } 100% { transform: scale(1); } }
 .note { margin-top: 16px; padding: 12px 14px; border: 1px solid var(--fg); font-size: 14px; line-height: 1.25; color: var(--fg); }
 .note.bad { border-color: var(--error); }
 .note.pay { display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 12px; background: transparent; text-align: left; border-color: var(--warn-ink); font: inherit; font-size: 14px; }
@@ -123,6 +136,12 @@ a { color: inherit; }
 .enter .group, .enter .stats, .enter .split { animation: rise .45s var(--ease) both; }
 .enter .group:nth-child(2) { animation-delay: .05s; } .enter .group:nth-child(3) { animation-delay: .1s; } .enter .group:nth-child(4) { animation-delay: .15s; } .enter .group:nth-child(n+5) { animation-delay: .2s; }
 @keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+/* Filas en cascada; al cambiar de periodo con las flechas, todo entra desde el lado hacia donde se avanzó */
+.enter .row[style*="--i"] { animation: rise .4s var(--ease) both; animation-delay: calc(min(var(--i), 14) * 28ms + 80ms); }
+main.dir-r .hero > :not(.duck-stage):not(.reg), main.dir-r .group { animation: slide-r .38s var(--ease) both; }
+main.dir-l .hero > :not(.duck-stage):not(.reg), main.dir-l .group { animation: slide-l .38s var(--ease) both; }
+@keyframes slide-r { from { opacity: 0; transform: translateX(28px); } }
+@keyframes slide-l { from { opacity: 0; transform: translateX(-28px); } }
 .group-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 12px 14px 10px; border-bottom: 1px solid var(--border); }
 .group-h .proof { color: var(--fg); font-size: 14px; }
 .row { display: block; width: 100%; background: none; border: 0; border-bottom: 1px solid var(--gray-30); padding: 12px 14px; text-align: left; color: var(--fg); transition: background .15s; }

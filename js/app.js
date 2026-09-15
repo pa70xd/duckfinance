@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const { computeAll, categoryEffect, isoDate, addMonths, TIPOS } = Logic;
+  const { computeAll, computeSemana, categoryEffect, isoDate, addMonths, addDays, weekStart, daysInMonth, mesDeSemana, TIPOS } = Logic;
 
   // ---------- utilidades ----------
   const $ = (s, el = document) => el.querySelector(s);
@@ -15,7 +15,8 @@
   const fechaC = iso => { const [y, m, d] = iso.split('-'); return +d + ' ' + MES_C[+m - 1] + ' ' + y; };
   const pct = x => Math.round((x || 0) * 100) + '%';
   // Minecraft no dibuja mayúsculas acentuadas: el kicker las pierde al mostrarse (Editorial Syntax v1)
-  const kicker = txt => '/' + txt.toUpperCase().replace(/[ÁÉÍÓÚ]/g, c => 'AEIOU'['ÁÉÍÓÚ'.indexOf(c)]) + '._';
+  const pixelTxt = txt => txt.toUpperCase().replace(/[ÁÉÍÓÚ]/g, c => 'AEIOU'['ÁÉÍÓÚ'.indexOf(c)]);
+  const kicker = txt => '/' + pixelTxt(txt) + '._';
   const BRAND = `<div class="brand"><span class="mark">${Icons.bits('duck', 19)}</span><span class="word">duckfinance</span></div>`;
   const hoy = () => isoDate(new Date());
   const I = (n, size) => Icons.bits(n, size);
@@ -25,7 +26,8 @@
 
   // ---------- estado ----------
   const store = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (e) { return d; } };
-  const state = { vista: store('df.vista', 'limites'), mes: hoy().slice(0, 7), filtroLim: 'todos', filtroMov: 'todos', q: '' };
+  // Límites abre siempre por semana; tocar el periodo lo voltea a mes. dir: sentido del último cambio de periodo (animación).
+  const state = { vista: store('df.vista', 'limites'), mes: hoy().slice(0, 7), periodo: 'semana', semana: weekStart(hoy()), dir: 0, flip: false, filtroMov: 'todos', q: '' };
   let D = null, R = null, IDX = null;
   const app = document.getElementById('app');
 
@@ -40,9 +42,25 @@
     s.add(hoy().slice(0, 7));
     return [...s].sort();
   }
+  function limitesSemana() {
+    const ultimo = D.mov.reduce((a, m) => m.fecha > a ? m.fecha : a, hoy());
+    return { min: weekStart(mesesDisponibles()[0] + '-01'), max: weekStart(ultimo) };
+  }
+  // Semana con la que se abre un mes: la actual si es este mes; si no, la primera cuyo jueves cae en él
+  function semanaDeMes(mes) {
+    if (mes === hoy().slice(0, 7)) return weekStart(hoy());
+    const ws = weekStart(mes + '-01');
+    return mesDeSemana(ws) === mes ? ws : addDays(ws, 7);
+  }
+  // Mes de una semana: el de hoy si la semana es la actual; si no, el de su jueves
+  const mesDe = ws => hoy() >= ws && hoy() <= addDays(ws, 6) ? hoy().slice(0, 7) : mesDeSemana(ws);
+  function etiquetaSemana(ws) {
+    const we = addDays(ws, 6), m1 = MES_C[+ws.slice(5, 7) - 1], m2 = MES_C[+we.slice(5, 7) - 1];
+    return `Sem ${+ws.slice(8)}${m1 === m2 ? '' : ' ' + m1}–${+we.slice(8)} ${m2}`;
+  }
 
   // ---------- render principal ----------
-  let enter = true, lastQueda = null;
+  let enter = true, lastQueda = null, quedaPeriodo = 0;
   function render() {
     if (!Store.configured()) return renderSetup();
     recompute();
@@ -57,14 +75,19 @@
     const scroll = window.scrollY;
     const act = document.activeElement, focusQ = act && act.id === 'q', caret = focusQ ? act.selectionStart : 0;
     const firstKeys = !$('.keys');
-    app.innerHTML = `${header()}<main class="${enter ? 'enter' : ''}">${VIEWS[state.vista]()}</main>${nav()}
+    const dir = enter && state.dir ? (state.dir > 0 ? 'dir-r' : 'dir-l') : '';
+    app.innerHTML = `${header()}<main class="${enter ? 'enter' : ''} ${dir}">${VIEWS[state.vista]()}</main>${nav()}
       <div class="keys ${firstKeys ? 'in' : ''}"><button class="key black" data-act="nuevo" data-tipo="Ingreso" aria-label="Registrar ingreso">${I('mas', 20)}<span>Ingreso</span></button>
       <button class="key green" data-act="nuevo" data-tipo="Gasto" aria-label="Registrar gasto">${I('menos', 20)}<span>Gasto</span></button></div>`;
     if (!enter) window.scrollTo(0, scroll);
     const q = $('#q'); if (q && focusQ) { q.focus(); q.setSelectionRange(caret, caret); }
-    if (enter && state.vista === 'limites') countUp($('#queda'), lastQueda, R.resumen.queda);
-    lastQueda = R.resumen.queda;
-    enter = false;
+    if (state.vista === 'limites') {
+      if (enter) countUp($('#queda'), lastQueda, quedaPeriodo);
+      lastQueda = quedaPeriodo;
+      const stage = $('#duck-stage');
+      if (stage) { const sa = saludMes(); Duck.mount(stage, sa.mood, pixelTxt(sa.msg), enter); }
+    }
+    enter = false; state.dir = 0; state.flip = false;
   }
   // Cambio de pantalla con entrada animada (sin View Transitions: en Chrome Android dejaban la pantalla congelada).
   function go(fn) { enter = true; fn(); render(); }
@@ -82,14 +105,23 @@
     if (st.syncing) { cls = 'busy'; txt = pend ? `Subiendo ${pend}` : 'Sincronizando'; }
     else if (st.error) { cls = pend ? 'warn' : 'err'; txt = pend ? `${pend} sin subir` : 'Sin conexión'; }
     else if (pend) { cls = 'warn'; txt = `${pend} pendientes`; }
+    const lim = state.vista === 'limites', sem = lim && state.periodo === 'semana';
+    let antes, despues, etiqueta;
+    if (sem) { const b = limitesSemana(); antes = state.semana > b.min; despues = state.semana < b.max; etiqueta = etiquetaSemana(state.semana); }
+    else { antes = i > 0; despues = i < meses.length - 1; etiqueta = mesLargo(state.mes); }
+    const unidad = sem ? 'Semana' : 'Mes';
+    const mov = state.dir > 0 ? 'dir-r' : state.dir < 0 ? 'dir-l' : '';
+    const centro = lim
+      ? `<button class="period ${state.flip ? 'in' : ''}" data-act="flip" aria-live="polite" aria-label="${esc(etiqueta)}. Toca para ver ${sem ? 'el mes completo' : 'por semana'}"><span class="h-case pl ${mov}">${etiqueta}</span>${I('voltear', 13)}</button>`
+      : `<div class="h-case pl ${mov}" aria-live="polite">${etiqueta}</div>`;
     return `<header class="blk top">
       <div class="top-row">${BRAND}
         <div class="tools"><button class="sync label ${cls}" data-act="sync" title="${esc(st.error || '')}">${I('sync', 14)}${txt}</button>
         <button class="iconbtn" data-act="settings" aria-label="Ajustes">${I('menu', 20)}</button></div></div>
-      ${state.vista === 'limites' || state.vista === 'movs' ? `<div class="month">
-        <button class="iconbtn" data-act="mes" data-d="-1" ${i <= 0 ? 'disabled' : ''} aria-label="Mes anterior">${I('izq', 16)}</button>
-        <div class="h-case" aria-live="polite">${mesLargo(state.mes)}</div>
-        <button class="iconbtn" data-act="mes" data-d="1" ${i >= meses.length - 1 ? 'disabled' : ''} aria-label="Mes siguiente">${I('der', 16)}</button></div>` : ''}
+      ${lim || state.vista === 'movs' ? `<div class="month">
+        <button class="iconbtn" data-act="per" data-d="-1" ${antes ? '' : 'disabled'} aria-label="${unidad} anterior">${I('izq', 16)}</button>
+        ${centro}
+        <button class="iconbtn" data-act="per" data-d="1" ${despues ? '' : 'disabled'} aria-label="${unidad} siguiente">${I('der', 16)}</button></div>` : ''}
     </header>`;
   }
 
@@ -108,50 +140,73 @@
     const w = Math.max(0, Math.min(1, p || 0)) * 100;
     return `<div class="bar ${sm ? 'sm' : ''} ${p > 1 ? 'bad' : p >= 0.8 ? 'warn' : ''}"><i style="width:${w}%"></i></div>`;
   }
-  const ESTADO = { bien: 'Bien', cerca: 'Cerca', mal: 'Pasado' };
 
   // ---------- LÍMITES (pantalla principal) ----------
+  // Periodo en pantalla: la semana (lunes a domingo) o el mes. Los fondos acumulables se muestran aparte.
+  function periodoLimites() {
+    if (state.periodo === 'semana') {
+      const P = computeSemana(D, state.semana, hoy());
+      const gastoFondo = Object.fromEntries(P.fondos.map(f => [f.nombre, f.gastado]));
+      return { semana: true, s: P.resumen, cats: P.cats.filter(c => c.limite > 0 || c.gastado !== 0), otras: P.otras, gastoFondo, faltan: P.resumen.diasRestantes };
+    }
+    const s = R.resumen, actual = state.mes === hoy().slice(0, 7);
+    return {
+      semana: false, s: { presupuesto: s.presupuesto, gastado: s.gastadoPresup, sinClasificar: s.sinClasificar, queda: s.queda },
+      cats: R.cats.filter(c => c.tipo === 'Mensual'), otras: R.cats.filter(c => !c.presupuestada && c.gastado !== 0 && c.tipo !== 'Ingreso'),
+      gastoFondo: null, faltan: actual ? diasRestantes() : 0
+    };
+  }
+  // Cómo va el mes, para el pato: dormido (sin gastos o mes futuro), feliz, nervioso (va rápido o con varias pasadas) o mal (se pasó del total)
+  function saludMes() {
+    const s = R.resumen, cur = hoy().slice(0, 7), mes = state.mes, nombreMes = MESES[+mes.slice(5, 7) - 1];
+    const gasto = s.gastadoPresup + s.sinClasificar;
+    if (mes > cur) return { mood: 'dormido', msg: `Zzz... ${nombreMes} aun no empieza` };
+    if (gasto <= 0) return { mood: 'dormido', msg: 'Zzz... sin gastos todavia' };
+    if (s.queda < 0) return { mood: 'mal', msg: `Te pasaste ${money(-s.queda)} en ${nombreMes}` };
+    const avance = mes < cur ? 1 : new Date().getDate() / daysInMonth(hoy());
+    const uso = s.presupuesto ? gasto / s.presupuesto : 0;
+    const pasadas = R.cats.filter(c => c.tipo === 'Mensual' && c.estado === 'mal').sort((a, b) => a.restante - b.restante);
+    if (uso > avance + 0.1 || pasadas.length >= 3) return { mood: 'nervioso', msg: pasadas.length ? `Ojo con ${pasadas[0].nombre}` : `Vas rapido: ${pct(uso)} gastado` };
+    if (mes < cur) return { mood: 'feliz', msg: `Cerraste con ${money(s.queda)} de sobra` };
+    return { mood: 'feliz', msg: pasadas.length ? `Vas bien, cuida ${pasadas[0].nombre}` : `Vas bien: quedan ${money(s.queda)}` };
+  }
+
   function vLimites() {
-    const s = R.resumen, uso = s.presupuesto ? s.gastadoPresup / s.presupuesto : 0;
-    const antes = state.mes < D.config.inicio.slice(0, 7);
+    const L = periodoLimites(), s = L.s;
+    const uso = s.presupuesto ? (s.gastado + s.sinClasificar) / s.presupuesto : 0;
     const actual = state.mes === hoy().slice(0, 7);
-    const n = R.cats.filter(c => c.presupuestada).length;
+    quedaPeriodo = s.queda;
     let h = `<section class="blk hero">${REG('r')}
-      <p class="kicker">${kicker('Limites · ' + mesLargo(state.mes).split(' ')[0])}</p>
       <div class="big n ${s.queda < 0 ? 'neg' : ''}" id="queda">${money(s.queda)}</div>
-      <div class="mlabel" style="margin-top:6px">${s.queda < 0 ? 'de mas sobre' : 'disponibles de'} ${money(s.presupuesto)}</div>
+      <div class="mlabel" style="margin-top:6px">${s.queda < 0 ? 'de mas sobre' : 'disponibles de'} ${money(s.presupuesto)}${L.semana ? ' esta semana' : ''}</div>
       ${bar(uso)}
-      <div class="proof" style="margin-top:12px;font-size:14px;color:var(--muted)">${pct(uso)} gastado${s.sinClasificar ? ' · ' + money(s.sinClasificar) + ' por clasificar' : ''}${actual ? ' · faltan ' + diasRestantes() + ' dias' : ''}</div>
-      <div class="badges">${s.rojo ? `<span class="badge mal">${s.rojo} pasad${s.rojo === 1 ? 'a' : 'as'}</span>` : ''}${s.amarillo ? `<span class="badge cerca">${s.amarillo} cerca</span>` : ''}${!s.rojo && !s.amarillo ? `<span class="badge bien">${n} en orden</span>` : ''}</div>
+      <div class="proof" style="margin-top:12px;font-size:14px;color:var(--muted)">${pct(uso)} gastado${s.sinClasificar ? ' · ' + money(s.sinClasificar) + ' por clasificar' : ''}${L.faltan ? ' · faltan ' + L.faltan + (L.faltan === 1 ? ' dia' : ' dias') : ''}</div>
+      <div class="duck-stage" id="duck-stage"><canvas id="duck" role="img"></canvas><div class="duck-say" aria-live="polite" hidden></div></div>
       ${actual ? pagosTarjeta().filter(t => t.dias <= 5 && !t.pagado).map(t => `<button class="note pay" data-act="pagar" data-card="${esc(t.nombre)}"><span><b>${esc(t.nombre)}:</b> ${t.dias === 0 ? 'hoy es el día límite de pago' : t.dias === 1 ? 'mañana es el día límite de pago' : `pago en ${t.dias} días (${fechaC(t.vence)})`}</span><span class="link">Registrar pago</span></button>`).join('') : ''}
-      ${s.comprasMsiMes.length ? `<div class="note bad"><b>Compra nueva a meses: ${money(s.comprasMsiMes.reduce((a, m) => a + m.monto, 0))}.</b> La regla es cero, salvo el seguro del auto en abril.</div>` : ''}
     </section>
-    <section class="blk">${REG('l')}<div class="stack">
-      <p class="kicker">${kicker('Por categoria')}</p>
-      ${tabs('flim', [['todos', 'Todos'], ['riesgo', 'En riesgo']], state.filtroLim, 'Filtro')}`;
-    const grupos = [...new Set(R.cats.filter(c => c.presupuestada).map(c => c.grupo))];
-    let alguno = false;
-    if (R.porClasificar.length && state.filtroLim === 'todos') {
+    <section class="blk">${REG('l')}<div class="stack">`;
+    let i = 0;
+    if (R.porClasificar.length) {
       const pc = R.porClasificar, tot = pc.reduce((a, m) => a + m.monto, 0);
       h += `<div class="group warnb"><div class="group-h"><span class="proof">Por clasificar</span><span class="label n">${pc.length} · ${money(tot)}</span></div>
-        ${pc.slice(0, 4).map(m => `<button class="row" data-act="clasificar" data-id="${esc(m.id)}"><div class="row-t"><span class="name">${esc(m.concepto)}</span><span class="amt n">${money(m.monto, true)}</span></div><div class="sup"><span>${fechaC(m.fecha)} · ${esc(m.cuenta)}</span><span>Toca para clasificar</span></div></button>`).join('')}
+        ${pc.slice(0, 4).map(m => `<button class="row" style="--i:${i++}" data-act="clasificar" data-id="${esc(m.id)}"><div class="row-t"><span class="name">${esc(m.concepto)}</span><span class="amt n">${money(m.monto, true)}</span></div><div class="sup"><span>${fechaC(m.fecha)} · ${esc(m.cuenta)}</span><span>Toca para clasificar</span></div></button>`).join('')}
         ${pc.length > 4 ? `<div class="empty">y ${pc.length - 4} más</div>` : ''}
         <div class="pad" style="padding-top:4px"><button class="btn primary block" data-act="clasificar">Clasificar ahora${Dot('flecha')}</button></div></div>`;
     }
-    for (const g of grupos) {
-      let cs = R.cats.filter(c => c.grupo === g && c.presupuestada);
-      if (state.filtroLim === 'riesgo') cs = cs.filter(c => c.estado === 'mal' || c.estado === 'cerca');
-      if (!cs.length) continue;
-      alguno = true;
-      const tl = cs.reduce((a, c) => a + c.limite, 0), tg = cs.reduce((a, c) => a + c.gastado, 0);
-      h += `<div class="group"><div class="group-h"><span class="proof">${esc(g)}</span><span class="label n">${money(tg)} / ${money(tl)}</span></div>`;
-      h += cs.map(rowCat).join('') + `</div>`;
+    // Primero la que está más cerca de su límite (o más pasada); los fijos ya cobrados sin pasarse van al final
+    const orden = c => pagadoFijo(c) ? -1 : c.pct;
+    const cs = L.cats.slice().sort((a, b) => (orden(b) - orden(a)) || (b.limite - a.limite));
+    const tl = cs.reduce((a, c) => a + c.limite, 0), tg = cs.reduce((a, c) => a + c.gastado, 0);
+    h += `<div class="group"><div class="group-h"><span class="proof">${L.semana ? 'Límites de la semana' : 'Límites del mes'}</span><span class="label n">${money(tg)} / ${money(tl)}</span></div>
+      ${cs.map(c => rowCat(c, L.semana, i++)).join('') || '<div class="empty">Nada con límite en este periodo.</div>'}</div>`;
+    const fondos = R.cats.filter(c => c.tipo === 'Fondo acumulable');
+    if (fondos.length) {
+      h += `<div class="group"><div class="group-h"><span class="proof">Fondos</span><span class="label n">Aparta ${money(fondos.reduce((a, c) => a + c.limite, 0))}/mes</span></div>
+        ${fondos.map(c => rowFondo(c, L.gastoFondo, i++)).join('')}</div>`;
     }
-    if (!alguno) h += `<div class="group"><div class="empty">Ninguna categoría está cerca de su límite.</div></div>`;
-    const otras = R.cats.filter(c => !c.presupuestada && c.gastado !== 0 && c.tipo !== 'Ingreso');
-    if (otras.length && state.filtroLim === 'todos') {
-      h += `<div class="group"><div class="group-h"><span class="proof">Fuera del presupuesto</span><span class="label n">${money(otras.reduce((a, c) => a + c.gastado, 0))}</span></div>
-        ${otras.map(c => `<button class="row" data-act="cat" data-n="${esc(c.nombre)}"><div class="row-t"><span class="name">${esc(c.nombre)}</span><span class="amt n">${money(c.gastado)}</span></div><div class="sup"><span>${esc(c.tipo)}</span><span>${c.movs} mov.</span></div></button>`).join('')}</div>`;
+    if (L.otras.length) {
+      h += `<div class="group"><div class="group-h"><span class="proof">Fuera del presupuesto</span><span class="label n">${money(L.otras.reduce((a, c) => a + c.gastado, 0))}</span></div>
+        ${L.otras.map(c => `<button class="row" style="--i:${i++}" data-act="cat" data-n="${esc(c.nombre)}"><div class="row-t"><span class="name">${esc(c.nombre)}</span><span class="amt n">${money(c.gastado)}</span></div><div class="sup"><span>${esc(c.tipo)}</span><span>${c.movs} mov.</span></div></button>`).join('')}</div>`;
     }
     return h + `</div></section>`;
   }
@@ -176,15 +231,20 @@
     const d = new Date(), fin = new Date(d.getFullYear(), d.getMonth() + 1, 0);
     return fin.getDate() - d.getDate() + 1;
   }
-  function rowCat(c) {
-    const semanal = c.tipo === 'Mensual' && (c.grupo === 'Estilo de vida' || c.nombre === 'Despensa') && state.mes === hoy().slice(0, 7);
-    if (c.tipo === 'Fondo acumulable') {
-      return `<button class="row" data-act="cat" data-n="${esc(c.nombre)}"><div class="row-t"><span class="name">${esc(c.nombre)}</span><span class="amt n ${c.acumulado < 0 ? 'neg' : ''}">Fondo ${money(c.acumulado)}</span></div>
-        <div class="sup n"><span>Este mes ${money(c.gastado)}</span><span>Aparta ${money(c.limite)}/mes</span></div></button>`;
-    }
-    return `<button class="row" data-act="cat" data-n="${esc(c.nombre)}"><div class="row-t"><span class="name">${esc(c.nombre)}</span><span class="amt n ${c.restante < 0 ? 'neg' : ''}">${c.restante < 0 ? 'Pasado ' + money(-c.restante) : 'Queda ' + money(c.restante)}</span></div>
+  const pagadoFijo = c => !!(c.dias && c.dias.length) && c.gastado > 0 && c.restante >= 0;
+  function rowCat(c, semana, i) {
+    let derecha = pct(c.pct);
+    if (pagadoFijo(c)) derecha = 'Pagado';
+    else if (semana && c.limite === 0) derecha = 'Fuera de su semana';
+    else if (semana && c.fijo && c.gastado === 0) { const d = c.cobros[0]; derecha = `${d < hoy() ? 'Tocaba el' : 'Se cobra el'} ${DIAS[new Date(d + 'T00:00:00').getDay()]} ${+d.slice(8)}`; }
+    return `<button class="row" style="--i:${i}" data-act="cat" data-n="${esc(c.nombre)}"><div class="row-t"><span class="name">${esc(c.nombre)}</span><span class="amt n ${c.restante < 0 ? 'neg' : ''}">${c.restante < 0 ? 'Pasado ' + money(-c.restante) : 'Queda ' + money(c.restante)}</span></div>
       ${bar(c.pct, true)}
-      <div class="sup n"><span>${money(c.gastado)} de ${money(c.limite)}</span><span>${semanal ? `Semana ${money(c.semana)} / ${money(c.limiteSemanal)}` : pct(c.pct)}</span></div></button>`;
+      <div class="sup n"><span>${money(c.gastado)} de ${money(c.limite)}</span><span>${derecha}</span></div></button>`;
+  }
+  function rowFondo(c, gastoSemana, i) {
+    const periodo = gastoSemana ? `Esta semana ${money(gastoSemana[c.nombre] || 0)}` : `Este mes ${money(c.gastado)}`;
+    return `<button class="row" style="--i:${i}" data-act="cat" data-n="${esc(c.nombre)}"><div class="row-t"><span class="name">${esc(c.nombre)}</span><span class="amt n ${c.acumulado < 0 ? 'neg' : ''}">Fondo ${money(c.acumulado)}</span></div>
+      <div class="sup n"><span>${periodo}</span><span>Aparta ${money(c.limite)}/mes</span></div></button>`;
   }
 
   // ---------- MOVIMIENTOS ----------
@@ -620,13 +680,36 @@
     toast.h = setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 300); }, 4200);
   }
 
+  // ---------- periodo: flechas y volteo semana ⇄ mes ----------
+  function moverPeriodo(d) {
+    if (state.vista === 'limites' && state.periodo === 'semana') {
+      const b = limitesSemana(), ns = addDays(state.semana, 7 * d);
+      if (ns < b.min || ns > b.max) return;
+      go(() => { state.semana = ns; state.mes = mesDe(ns); state.dir = d; });
+    } else {
+      const ms = mesesDisponibles(), i = ms.indexOf(state.mes) + d;
+      if (ms[i]) go(() => { state.mes = ms[i]; state.semana = semanaDeMes(ms[i]); state.dir = d; });
+    }
+  }
+  function voltearPeriodo() {
+    const btn = $('.period');
+    const cambiar = () => go(() => {
+      if (state.periodo === 'semana') state.periodo = 'mes';
+      else { state.periodo = 'semana'; state.semana = semanaDeMes(state.mes); state.mes = mesDe(state.semana); }
+      state.flip = true;
+    });
+    if (REDUCED || !btn) return cambiar();
+    btn.classList.add('out'); btn.disabled = true;
+    setTimeout(cambiar, 150);
+  }
+
   // ---------- eventos globales ----------
   app.addEventListener('click', e => {
     const t = e.target.closest('[data-act]'); if (!t) return;
     const a = t.dataset.act;
     if (a === 'vista') { if (t.dataset.v === state.vista) return; go(() => { state.vista = t.dataset.v; try { localStorage.setItem('df.vista', JSON.stringify(state.vista)); } catch (x) {} window.scrollTo(0, 0); }); }
-    else if (a === 'mes') { const ms = mesesDisponibles(); const i = ms.indexOf(state.mes) + (+t.dataset.d); if (ms[i]) go(() => { state.mes = ms[i]; }); }
-    else if (a === 'flim') go(() => { state.filtroLim = t.dataset.v; });
+    else if (a === 'per') moverPeriodo(+t.dataset.d);
+    else if (a === 'flip') voltearPeriodo();
     else if (a === 'fmov') go(() => { state.filtroMov = t.dataset.v; });
     else if (a === 'nuevo') capture({ tipo: t.dataset.tipo, fecha: state.mes === hoy().slice(0, 7) ? hoy() : state.mes + '-01' });
     else if (a === 'cat') categorySheet(t.dataset.n);

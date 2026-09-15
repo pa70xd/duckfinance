@@ -33,7 +33,8 @@
     check: ['....#', '...#.', '#.#..', '.#...', '.....'],
     descargar: ['..#..', '..#..', '#.#.#', '.###.', '#####'],
     borrar: ['#####', '.#.#.', '.#.#.', '.#.#.', '.###.'],
-    flecha: ['..#..', '...#.', '#####', '...#.', '..#..']
+    flecha: ['..#..', '...#.', '#####', '...#.', '..#..'],
+    voltear: ['.#...', '###..', '.#.#.', '..###', '...#.']
   };
   // Coordenadas en unidades de 1.74px (x) y 1.74px (y); las medias unidades reproducen la flecha del botón de Emerald.
   const DOTS = {

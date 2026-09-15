@@ -130,7 +130,59 @@
     };
   }
 
-  const api = { computeAll, categoryEffect, monthKey, isoDate, addMonths, TIPOS, NEUTRAL };
+  const addDays = (iso, n) => { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return isoDate(d); };
+  const daysInMonth = iso => new Date(+iso.slice(0, 4), +iso.slice(5, 7), 0).getDate();
+  // Mes al que pertenece una semana (lunes a domingo): el de su jueves, como en ISO 8601
+  const mesDeSemana = ws => addDays(ws, 3).slice(0, 7);
+
+  // Límite de una categoría en un rango de días. Los cargos fijos (c.dias = días del mes en que se cobran)
+  // cuentan completos en su día; lo variable se reparte por día según el largo de cada mes.
+  function limiteEnDias(c, dias) {
+    let l = 0;
+    const cobros = [];
+    for (const d of dias) {
+      const dim = daysInMonth(d), dd = +d.slice(8, 10);
+      if (c.dias && c.dias.length) {
+        for (const x of c.dias) if (Math.min(x, dim) === dd) { l += c.limite / c.dias.length; cobros.push(d); }
+      } else l += c.limite / dim;
+    }
+    return { limite: r2(l), cobros };
+  }
+
+  // Límites de una semana: solo categorías mensuales (los fondos acumulan aparte).
+  function computeSemana(D, ws, hoy) {
+    const dias = [0, 1, 2, 3, 4, 5, 6].map(i => addDays(ws, i)), we = dias[6];
+    const enSem = D.mov.filter(m => m.fecha >= ws && m.fecha <= we);
+    const cats = D.categorias.filter(c => c.tipo === 'Mensual').map(c => {
+      const { limite, cobros } = limiteEnDias(c, dias);
+      let gastado = 0, movs = 0;
+      for (const m of enSem) if (m.categoria === c.nombre) { const e = categoryEffect(m); if (e) { gastado += e; movs++; } }
+      gastado = r2(gastado);
+      const pct = limite > 0 ? gastado / limite : gastado > 0 ? Infinity : 0;
+      const estado = pct > 1 ? 'mal' : pct >= 0.8 ? 'cerca' : 'bien';
+      return { ...c, limiteMes: c.limite, limite, gastado, movs, restante: r2(limite - gastado), pct, estado, cobros, fijo: !!(c.dias && c.dias.length) };
+    });
+    const fondos = D.categorias.filter(c => c.tipo === 'Fondo acumulable').map(c => ({
+      nombre: c.nombre, gastado: r2(enSem.filter(m => m.categoria === c.nombre).reduce((a, m) => a + categoryEffect(m), 0))
+    }));
+    const presupuestadas = new Set(D.categorias.filter(c => c.tipo === 'Mensual' || c.tipo === 'Fondo acumulable').map(c => c.nombre));
+    const otrasMap = {};
+    for (const m of enSem) {
+      if (!m.categoria || presupuestadas.has(m.categoria)) continue;
+      const e = categoryEffect(m); if (!e) continue;
+      const c = D.categorias.find(x => x.nombre === m.categoria);
+      if (c && c.tipo === 'Ingreso') continue;
+      const o = otrasMap[m.categoria] = otrasMap[m.categoria] || { nombre: m.categoria, tipo: c ? c.tipo : '', gastado: 0, movs: 0 };
+      o.gastado = r2(o.gastado + e); o.movs++;
+    }
+    const sinClasificar = r2(enSem.filter(m => (m.tipo === 'Gasto' || m.tipo === 'Compra a meses') && !m.categoria).reduce((a, m) => a + m.monto, 0));
+    const presupuesto = r2(cats.reduce((a, c) => a + c.limite, 0));
+    const gastado = r2(cats.reduce((a, c) => a + c.gastado, 0));
+    const diasRestantes = hoy < ws ? 7 : hoy > we ? 0 : Math.round((new Date(we + 'T00:00:00') - new Date(hoy + 'T00:00:00')) / 864e5) + 1;
+    return { ws, we, dias, cats, fondos, otras: Object.values(otrasMap), resumen: { presupuesto, gastado, sinClasificar, queda: r2(presupuesto - gastado - sinClasificar), diasRestantes } };
+  }
+
+  const api = { computeAll, computeSemana, limiteEnDias, categoryEffect, monthKey, isoDate, addMonths, addDays, weekStart, daysInMonth, mesDeSemana, TIPOS, NEUTRAL };
   if (typeof module !== 'undefined') module.exports = api;
   else root.Logic = api;
 })(this);
