@@ -80,6 +80,8 @@ a { color: inherit; }
 .sync.warn .pi { color: var(--warn-ink); } .inv .sync.warn .pi { color: var(--warn); }
 .sync.err .pi { color: var(--error-ink); } .inv .sync.err .pi { color: var(--error-inv); }
 .sync.busy .pi { animation: spin 1s steps(8) infinite; }
+/* En teléfonos angostos, con el ojo de privacidad no cabe el texto: "Al día" y "Sincronizando" quedan solo como icono; los avisos sí se leen */
+@media (max-width: 420px) { .sync:not(.warn):not(.err) .sync-t { display: none; } .sync { padding: 0 8px; } }
 @keyframes spin { to { transform: rotate(360deg); } }
 .iconbtn { width: 44px; height: 44px; display: inline-grid; place-items: center; background: transparent; border: 0; color: var(--fg); padding: 0; transition: transform .12s var(--snap), opacity .15s; }
 .iconbtn:active { transform: scale(.88); }

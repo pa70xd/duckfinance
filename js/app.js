@@ -4,10 +4,15 @@
 
   // ---------- utilidades ----------
   const $ = (s, el = document) => el.querySelector(s);
-  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  // En modo privacidad también se tapan los montos escritos a mano en conceptos y notas ("~$907 por semana")
+  const esc = s => String(s ?? '').replace(/\$\s?\d[\d,.]*/g, m => privado ? '$***' : m).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const f0 = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 });
   const f2 = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const money = (x, dec) => (dec ? f2 : f0).format(x || 0); // guion ASCII: Minecraft no tiene el signo menos tipografico
+  // Modo privacidad: todo monto en pesos sale enmascarado; porcentajes, barras y fechas se siguen viendo.
+  // Los campos donde uno escribe un monto (captura, límite) no se enmascaran.
+  let privado = false;
+  try { privado = JSON.parse(localStorage.getItem('df.privado')) === true; } catch (e) {}
+  const money = (x, dec) => privado ? '$***' : (dec ? f2 : f0).format(x || 0); // guion ASCII: Minecraft no tiene el signo menos tipografico
   const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
   const MES_C = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
   const DIAS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
@@ -118,7 +123,8 @@
       : `<div class="h-case pl ${mov}" aria-live="polite">${etiqueta}</div>`;
     return `<header class="blk top">
       <div class="top-row">${BRAND}
-        <div class="tools"><button class="sync label ${cls}" data-act="sync" title="${esc(st.error || '')}">${I('sync', 14)}${txt}</button>
+        <div class="tools"><button class="sync label ${cls}" data-act="sync" title="${esc(st.error || '')}">${I('sync', 14)}<span class="sync-t">${txt}</span></button>
+        <button class="iconbtn priv" data-act="privado" aria-pressed="${privado}" aria-label="${privado ? 'Mostrar cifras' : 'Ocultar cifras'}">${I(privado ? 'ojoCerrado' : 'ojo', 22)}</button>
         <button class="iconbtn" data-act="settings" aria-label="Ajustes">${I('menu', 20)}</button></div></div>
       ${lim || state.vista === 'movs' ? `<div class="month">
         <button class="iconbtn" data-act="per" data-d="-1" ${antes ? '' : 'disabled'} aria-label="${unidad} anterior">${I('izq', 16)}</button>
@@ -753,6 +759,12 @@
     else if (a === 'edit') { const m = D.mov.find(x => x.id === t.dataset.id); if (m) capture({ ...m, monto: String(m.monto) }, m); }
     else if (a === 'settings') settingsSheet();
     else if (a === 'sync') Store.sync();
+    else if (a === 'privado') {
+      privado = !privado; lastQueda = null;
+      try { localStorage.setItem('df.privado', JSON.stringify(privado)); } catch (x) {}
+      render();
+      toast(privado ? 'Cifras ocultas.' : 'Cifras visibles.');
+    }
   });
   app.addEventListener('keydown', e => {
     if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.hero.tap')) { e.preventDefault(); voltearPeriodo(); }
