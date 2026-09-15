@@ -15,9 +15,12 @@
   const fechaC = iso => { const [y, m, d] = iso.split('-'); return +d + ' ' + MES_C[+m - 1] + ' ' + y; };
   const pct = x => Math.round((x || 0) * 100) + '%';
   // Minecraft no dibuja mayúsculas acentuadas: el kicker las pierde al mostrarse (Editorial Syntax v1)
-  const kicker = txt => '/' + txt.toUpperCase().replace(/[ÁÉÍÓÚ]/g, c => 'AEIOU'['ÁÉÍÓÚ'.indexOf(c)]) + '_';
+  const kicker = txt => '/' + txt.toUpperCase().replace(/[ÁÉÍÓÚ]/g, c => 'AEIOU'['ÁÉÍÓÚ'.indexOf(c)]) + '._';
+  const BRAND = `<div class="brand"><span class="mark">${Icons.bits('duck', 19)}</span><span class="word">duckfinance</span></div>`;
   const hoy = () => isoDate(new Date());
-  const I = (n, size) => Icons.icon(n, size);
+  const I = (n, size) => Icons.bits(n, size);
+  const Dot = (n, size) => Icons.dots(n, size);
+  const REG = side => `<i class="reg ${side}" aria-hidden="true"></i>`;
   const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // ---------- estado ----------
@@ -44,19 +47,18 @@
     recompute();
     if (!D) {
       const sk = (w, h) => `<div class="sk" style="width:${w};height:${h}px;margin-top:12px"></div>`;
-      app.innerHTML = `<div class="blk inv" style="min-height:100vh;padding-top:calc(24px + var(--safe-t))"><div class="brand">${I('duck', 22)}<p class="kicker">${kicker('DuckFinance')}</p></div>
-        <p class="label" style="margin-top:34px">Te queda del presupuesto</p>${sk('62%', 44)}${sk('40%', 14)}${sk('100%', 8)}
-        <div style="margin-top:40px">${sk('100%', 56)}${sk('100%', 56)}${sk('100%', 56)}</div>
+      app.innerHTML = `<header class="blk top"><div class="top-row">${BRAND}</div></header><div class="blk hero" style="min-height:100vh">${REG('r')}
+        <p class="kicker">${kicker('Cargando')}</p>${sk('80%', 40)}${sk('60%', 40)}<div style="margin-top:28px">${sk('55%', 48)}</div>${sk('100%', 8)}
         <p class="sup" style="margin-top:24px">${esc(Store.status.error || 'Descargando tu base de GitHub…')}</p>
-        ${Store.status.error ? '<button class="btn sm" data-act="settings" style="margin-top:12px">Ajustes</button>' : ''}</div>`;
+        ${Store.status.error ? '<button class="btn secondary" data-act="settings" style="margin-top:12px">Ajustes</button>' : ''}</div>`;
       return;
     }
     const scroll = window.scrollY;
     const act = document.activeElement, focusQ = act && act.id === 'q', caret = focusQ ? act.selectionStart : 0;
     const firstKeys = !$('.keys');
     app.innerHTML = `${header()}<main class="${enter ? 'enter' : ''}">${VIEWS[state.vista]()}</main>${nav()}
-      <div class="keys ${firstKeys ? 'in' : ''}"><button class="key green" data-act="nuevo" data-tipo="Gasto" aria-label="Registrar gasto">${I('menos', 23)}<span>Gasto</span></button>
-      <button class="key black" data-act="nuevo" data-tipo="Ingreso" aria-label="Registrar ingreso">${I('mas', 23)}<span>Ingreso</span></button></div>`;
+      <div class="keys ${firstKeys ? 'in' : ''}"><button class="key green" data-act="nuevo" data-tipo="Gasto" aria-label="Registrar gasto">${I('menos', 20)}<span>Gasto</span></button>
+      <button class="key black" data-act="nuevo" data-tipo="Ingreso" aria-label="Registrar ingreso">${I('mas', 20)}<span>Ingreso</span></button></div>`;
     if (!enter) window.scrollTo(0, scroll);
     const q = $('#q'); if (q && focusQ) { q.focus(); q.setSelectionRange(caret, caret); }
     if (enter && state.vista === 'limites') countUp($('#queda'), lastQueda, R.resumen.queda);
@@ -79,21 +81,20 @@
     if (st.syncing) { cls = 'busy'; txt = pend ? `Subiendo ${pend}` : 'Sincronizando'; }
     else if (st.error) { cls = pend ? 'warn' : 'err'; txt = pend ? `${pend} sin subir` : 'Sin conexión'; }
     else if (pend) { cls = 'warn'; txt = `${pend} pendientes`; }
-    const titulo = { limites: 'DuckFinance', movs: 'Movimientos', cuentas: 'Cuentas', metas: 'Metas' }[state.vista];
-    return `<header class="blk inv top">
-      <div class="top-row"><div class="brand">${I('duck', 22)}<p class="kicker">${kicker(titulo)}</p></div>
-        <div style="display:flex;gap:8px;align-items:center"><button class="sync label ${cls}" data-act="sync" title="${esc(st.error || '')}">${I('sync', 12)}${txt}</button>
-        <button class="iconbtn" data-act="settings" aria-label="Ajustes">${I('ajustes', 17)}</button></div></div>
+    return `<header class="blk top">
+      <div class="top-row">${BRAND}
+        <div class="tools"><button class="sync label ${cls}" data-act="sync" title="${esc(st.error || '')}">${I('sync', 14)}${txt}</button>
+        <button class="iconbtn" data-act="settings" aria-label="Ajustes">${I('menu', 20)}</button></div></div>
       ${state.vista === 'limites' || state.vista === 'movs' ? `<div class="month">
-        <button class="iconbtn" data-act="mes" data-d="-1" ${i <= 0 ? 'disabled' : ''} aria-label="Mes anterior">${I('izq', 15)}</button>
+        <button class="iconbtn" data-act="mes" data-d="-1" ${i <= 0 ? 'disabled' : ''} aria-label="Mes anterior">${I('izq', 16)}</button>
         <div class="h-case" aria-live="polite">${mesLargo(state.mes)}</div>
-        <button class="iconbtn" data-act="mes" data-d="1" ${i >= meses.length - 1 ? 'disabled' : ''} aria-label="Mes siguiente">${I('der', 15)}</button></div>` : ''}
+        <button class="iconbtn" data-act="mes" data-d="1" ${i >= meses.length - 1 ? 'disabled' : ''} aria-label="Mes siguiente">${I('der', 16)}</button></div>` : ''}
     </header>`;
   }
 
   const VISTAS = ['limites', 'movs', 'cuentas', 'metas'];
   function nav() {
-    const b = (v, t) => `<button data-act="vista" data-v="${v}" ${state.vista === v ? 'aria-current="page"' : ''}>${I(v, 19)}<span class="nav-t">${t}</span></button>`;
+    const b = (v, t) => `<button data-act="vista" data-v="${v}" ${state.vista === v ? 'aria-current="page"' : ''}>${I(v, 22)}<span class="nav-t">${t}</span></button>`;
     return `<nav class="nav" aria-label="Secciones"><div class="in"><i class="ind" style="transform:translateX(${VISTAS.indexOf(state.vista) * 100}%)"></i>${b('limites', 'Límites')}${b('movs', 'Movimientos')}${b('cuentas', 'Cuentas')}${b('metas', 'Metas')}</div></nav>`;
   }
   function tabs(act, opts, cur, label, attr) {
@@ -113,17 +114,19 @@
     const s = R.resumen, uso = s.presupuesto ? s.gastadoPresup / s.presupuesto : 0;
     const antes = state.mes < D.config.inicio.slice(0, 7);
     const actual = state.mes === hoy().slice(0, 7);
-    let h = `<section class="blk inv hero">
-      <div class="label">Te queda del presupuesto</div>
-      <div class="hero-row"><div class="h-hero n ${s.queda < 0 ? 'neg' : ''}" id="queda">${money(s.queda)}</div><div class="metric ${uso > 1 ? 'neg' : 'green-ink'}">${pct(uso)}</div></div>
-      <div class="sup n">Llevas ${money(s.gastadoPresup)} de ${money(s.presupuesto)}${actual ? ' · faltan ' + diasRestantes() + ' días' : ''}</div>
+    const n = R.cats.filter(c => c.presupuestada).length;
+    let h = `<section class="blk hero">${REG('r')}
+      <p class="kicker">${kicker('Limites')}</p>
+      <h1 class="h-hero">${s.queda < 0 ? 'Te pasaste del presupuesto.' : 'Lo que te queda este mes.'}</h1>
+      <div class="mrow"><span class="metric n ${s.queda < 0 ? 'neg' : ''}" id="queda">${money(s.queda)}</span><span class="mlabel">${s.queda < 0 ? 'de más' : 'disponibles'} de ${money(s.presupuesto)}</span></div>
+      <div class="mrow" style="margin-top:12px"><span class="metric sm n ${uso > 1 ? 'neg' : ''}">${pct(uso)}</span><span class="mlabel" style="color:var(--fg)">gastado${actual ? ' · faltan ' + diasRestantes() + ' días' : ''}</span></div>
       ${bar(uso)}
-      <div class="badges">${s.rojo ? `<span class="badge mal">${s.rojo} pasad${s.rojo === 1 ? 'a' : 'as'}</span>` : ''}${s.amarillo ? `<span class="badge cerca">${s.amarillo} cerca</span>` : ''}${!s.rojo && !s.amarillo ? '<span class="badge bien">Todo en orden</span>' : ''}</div>
+      <div class="badges">${s.rojo ? `<span class="badge mal">${s.rojo} pasad${s.rojo === 1 ? 'a' : 'as'}</span>` : ''}${s.amarillo ? `<span class="badge cerca">${s.amarillo} cerca</span>` : ''}${!s.rojo && !s.amarillo ? `<span class="badge bien">${n} en orden</span>` : ''}</div>
       ${s.comprasMsiMes.length ? `<div class="note bad"><b>Compra nueva a meses: ${money(s.comprasMsiMes.reduce((a, m) => a + m.monto, 0))}.</b> La regla es cero, salvo el seguro del auto en abril.</div>` : ''}
       ${antes ? `<div class="note">El plan arranca el ${fechaC(D.config.inicio)}. Este mes es solo referencia.</div>` : ''}
     </section>
-    <section class="blk"><div class="stack">
-      <p class="kicker">${kicker('Límites por categoría')}</p>
+    <section class="blk">${REG('l')}<div class="stack">
+      <p class="kicker">${kicker('Por categoria')}</p>
       ${tabs('flim', [['todos', 'Todos'], ['riesgo', 'En riesgo']], state.filtroLim, 'Filtro')}`;
     const grupos = [...new Set(R.cats.filter(c => c.presupuestada).map(c => c.grupo))];
     let alguno = false;
@@ -133,13 +136,13 @@
       if (!cs.length) continue;
       alguno = true;
       const tl = cs.reduce((a, c) => a + c.limite, 0), tg = cs.reduce((a, c) => a + c.gastado, 0);
-      h += `<div class="group"><div class="group-h"><span class="label" style="color:var(--ink)">${esc(g)}</span><span class="label n">${money(tg)} / ${money(tl)}</span></div>`;
+      h += `<div class="group"><div class="group-h"><span class="proof">${esc(g)}</span><span class="label n">${money(tg)} / ${money(tl)}</span></div>`;
       h += cs.map(rowCat).join('') + `</div>`;
     }
     if (!alguno) h += `<div class="group"><div class="empty">Ninguna categoría está cerca de su límite.</div></div>`;
     const otras = R.cats.filter(c => !c.presupuestada && c.gastado !== 0 && c.tipo !== 'Ingreso');
     if (otras.length && state.filtroLim === 'todos') {
-      h += `<div class="group"><div class="group-h"><span class="label" style="color:var(--ink)">Fuera del presupuesto</span><span class="label n">${money(otras.reduce((a, c) => a + c.gastado, 0))}</span></div>
+      h += `<div class="group"><div class="group-h"><span class="proof">Fuera del presupuesto</span><span class="label n">${money(otras.reduce((a, c) => a + c.gastado, 0))}</span></div>
         ${otras.map(c => `<button class="row" data-act="cat" data-n="${esc(c.nombre)}"><div class="row-t"><span class="name">${esc(c.nombre)}</span><span class="amt n">${money(c.gastado)}</span></div><div class="sup"><span>${esc(c.tipo)}</span><span>${c.movs} mov.</span></div></button>`).join('')}</div>`;
     }
     return h + `</div></section>`;
@@ -171,12 +174,11 @@
       if (f === 'otros' && !['Pago de tarjeta', 'Transferencia', 'Ajuste de saldo'].includes(m.tipo)) return false;
       return !q || [m.concepto, m.nota, m.categoria, m.cuenta, String(m.monto)].join(' ').toLowerCase().includes(q);
     });
-    let h = `<section class="blk inv" style="padding-top:4px"><div class="stats">
-      <div><div class="label">Ingresos</div><div class="v n pos">${money(s.ingresos)}</div></div>
-      <div><div class="label">Gastos</div><div class="v n">${money(s.gastoPropio)}</div></div>
-      <div class="wide"><span class="label">Balance del mes</span><span class="metric ${balance < 0 ? 'neg' : 'green-ink'}" style="font-size:24px;line-height:28px">${money(balance).replace('−', '-')}</span></div>
-    </div></section>
-    <section class="blk"><div class="stack">
+    let h = `<section class="blk inv">${REG('r')}
+      <div class="mrow"><span class="metric n ${balance < 0 ? 'neg' : ''}">${money(balance)}</span><span class="mlabel">balance del mes</span></div>
+      <div class="stats"><div><div class="label">Ingresos</div><div class="v n pos">${money(s.ingresos)}</div></div><div><div class="label">Gastos</div><div class="v n">${money(s.gastoPropio)}</div></div></div>
+    </section>
+    <section class="blk">${REG('l')}<div class="stack">
       <div class="search">${I('buscar', 16)}<input id="q" type="search" placeholder="Buscar concepto, nota o monto" value="${esc(state.q)}" aria-label="Buscar" autocomplete="off"></div>
       ${tabs('fmov', [['todos', 'Todos'], ['gastos', 'Gastos'], ['ingresos', 'Ingresos'], ['otros', 'Otros']], f, 'Tipo')}`;
     if (!rows.length) return h + `<div class="group"><div class="empty">Sin movimientos con ese filtro en ${mesLargo(state.mes)}.</div></div></div></section>`;
@@ -187,7 +189,7 @@
         dia = m.fecha;
         const d = new Date(dia + 'T00:00:00');
         const tot = rows.filter(x => x.fecha === dia).reduce((a, x) => a + categoryEffect(x), 0);
-        h += `<div class="day-h" style="display:flex;justify-content:space-between"><span class="label" style="color:var(--ink)">${DIAS[d.getDay()]} ${fechaC(dia)}</span>${tot ? `<span class="label n">${money(tot, true)}</span>` : ''}</div>`;
+        h += `<div class="day-h"><span class="proof" style="font-size:14px">${DIAS[d.getDay()]} ${fechaC(dia)}</span>${tot ? `<span class="label n">${money(tot, true)}</span>` : ''}</div>`;
       }
       h += rowMov(m);
     }
@@ -204,13 +206,13 @@
   // ---------- CUENTAS ----------
   function vCuentas() {
     const s = R.resumen;
-    let h = `<section class="blk inv" style="padding-top:4px"><div class="label">Patrimonio neto</div>
-      <div class="h-hero n ${s.neto < 0 ? 'neg' : ''}" style="margin-top:10px">${money(s.neto)}</div>
+    let h = `<section class="blk inv">${REG('r')}<p class="kicker">${kicker('Patrimonio')}</p>
+      <div class="mrow" style="margin-top:14px"><span class="metric n ${s.neto < 0 ? 'neg' : ''}">${money(s.neto)}</span><span class="mlabel">${s.neto < 0 ? 'patrimonio neto negativo' : 'patrimonio neto'}</span></div>
       <div class="split"><div><div class="label">Tienes</div><div class="v n">${money(s.tienes)}</div></div>
       <div><div class="label">Tarjetas</div><div class="v n">${money(s.deudaTarjetas)}</div></div>
       <div><div class="label">Total deuda</div><div class="v n">${money(s.debes)}</div></div></div>
-      <div class="sup" style="margin-top:10px">La deuda incluye el crédito del auto; el valor del coche no se cuenta.</div></section>
-    <section class="blk"><div class="stack"><p class="kicker">${kicker('Saldos')}</p><div class="group">`;
+      <p class="sup" style="margin:12px 0 0">La deuda incluye el crédito del auto; el valor del coche no se cuenta.</p></section>
+    <section class="blk">${REG('l')}<div class="stack"><p class="kicker">${kicker('Saldos')}</p><div class="group">`;
     const ultima = {};
     for (const m of D.mov) for (const c of [m.cuenta, m.destino]) if (c && m.tipo !== 'Ajuste de saldo' && (!ultima[c] || m.fecha > ultima[c])) ultima[c] = m.fecha;
     for (const c of R.cuentas) {
@@ -236,12 +238,13 @@
 
   // ---------- METAS ----------
   function vMetas() {
-    let h = `<section class="blk inv" style="padding-top:4px"><div class="label">Ahorro en GBM</div><div class="h-hero n" style="margin-top:10px">${money((R.cuentas.find(c => c.nombre === 'GBM') || {}).saldo)}</div>
-      <div class="sup" style="margin-top:8px">Primero el fondo de emergencia; después todo va al enganche de la casa.</div></section><section class="blk"><div class="stack">`;
+    let h = `<section class="blk inv">${REG('r')}<p class="kicker">${kicker('Metas')}</p>
+      <div class="mrow" style="margin-top:14px"><span class="metric n">${money((R.cuentas.find(c => c.nombre === 'GBM') || {}).saldo)}</span><span class="mlabel">ahorrados en GBM</span></div>
+      <p class="body-l" style="margin:16px 0 0;color:var(--gray-60)">Primero el fondo de emergencia; después todo va al enganche de la casa.</p></section><section class="blk">${REG('l')}<div class="stack">`;
     for (const t of R.metas) {
       h += `<div class="group meta-card"><div class="pad"><div class="label">${esc(t.tipo)}</div><div class="h-case" style="margin-top:8px">${esc(t.meta)}</div>`;
       if (t.objetivo) {
-        h += `<div class="row-t" style="margin-top:14px;align-items:flex-end"><span class="big-amt n">${money(t.actual)}</span><span class="metric">${pct(t.avance)}</span></div>${bar(t.avance)}
+        h += `<div class="mrow" style="margin-top:14px"><span class="big-amt n">${money(t.actual)}</span><span class="mlabel" style="color:var(--badge-green)">${pct(t.avance)} logrado</span></div>${bar(t.avance)}
           <div class="sup n" style="display:flex;justify-content:space-between;margin-top:8px"><span>Falta ${money(t.falta)} de ${money(t.objetivo)}</span><span>${t.fecha ? 'Listo ~' + mesLargo(t.fecha.slice(0, 7)) : ''}</span></div>`;
       } else h += `<div class="row-t" style="margin-top:14px"><span class="big-amt n">${money(t.actual)}</span><span class="sup">Objetivo por definir</span></div>`;
       h += `${t.nota ? `<p class="sup" style="margin:12px 0 0">${esc(t.nota)}</p>` : ''}</div></div>`;
@@ -269,7 +272,7 @@
   }
   let sheetCtx = null;
   sheetRoot.addEventListener('click', e => { if (e.target.classList.contains('sheet')) closeSheet(); });
-  const sheetHead = t => `<div class="blk inv sheet-h"><p class="kicker">${kicker(t)}</p><button class="iconbtn" data-act="close" aria-label="Cerrar">${I('cerrar', 15)}</button></div>`;
+  const sheetHead = t => `<div class="blk sheet-h"><p class="kicker">${kicker(t)}</p><button class="iconbtn" data-act="close" aria-label="Cerrar">${I('cerrar', 18)}</button></div>`;
 
   // ---------- captura: gasto, ingreso y demás ----------
   function capture(prefill, editing) {
@@ -327,8 +330,8 @@
           <label class="field"><span class="label">Fecha</span><input class="input" id="fecha" type="date" value="${esc(f.fecha)}"></label></div>
         <label class="field"><span class="label">Nota</span><input class="input" id="nota" maxlength="140" placeholder="Opcional" value="${esc(f.nota)}"></label>
         <div class="err" id="err" role="alert"></div>
-        <button class="btn primary block" type="submit">Guardar ${f.tipo === 'Gasto' || f.tipo === 'Ingreso' ? f.tipo.toLowerCase() : ''}${I('flecha', 18)}</button>
-        ${editing ? `<button class="btn danger block sm" type="button" data-del="1">${I('borrar', 15)}Borrar movimiento</button>
+        <button class="btn primary xl block" type="submit">Guardar ${f.tipo === 'Gasto' || f.tipo === 'Ingreso' ? f.tipo.toLowerCase() : ''}${Dot('flecha')}</button>
+        ${editing ? `<button class="btn danger block" type="button" data-del="1">Borrar movimiento${Dot('cerrar')}</button>
           <p class="sup" style="margin:0">Origen: ${esc(editing.origen || 'app')}${editing.creado ? ' · capturado ' + esc(editing.creado.slice(0, 16).replace('T', ' ')) : ''}</p>` : ''}`;
       impact();
     }
@@ -412,14 +415,13 @@
     const c = R.cats.find(x => x.nombre === nombre); if (!c) return;
     const movs = R.movMes.filter(m => m.categoria === nombre);
     const el = openSheet(`${sheetHead('Categoria')}<div class="blk stack" style="padding-bottom:calc(24px + var(--safe-b))">
-      <div><div class="label">${esc(c.grupo)} · ${esc(c.tipo)}</div><h2 class="h-case" style="margin-top:8px">${esc(c.nombre)}</h2>${c.nota ? `<p class="sup" style="margin:8px 0 0">${esc(c.nota)}</p>` : ''}</div>
-      ${c.presupuestada ? `<div class="group pad"><div class="row-t" style="align-items:flex-end"><span class="big-amt n ${(c.tipo === 'Fondo acumulable' ? c.acumulado : c.restante) < 0 ? 'neg' : ''}">${money(c.tipo === 'Fondo acumulable' ? c.acumulado : c.restante)}</span><span class="metric">${pct(c.pct)}</span></div>
-        <div class="sup">${c.tipo === 'Fondo acumulable' ? 'Acumulado en el fondo' : 'Te queda en ' + mesLargo(state.mes)}</div>${bar(c.pct)}
+      <div><div class="label">${esc(c.grupo)} · ${esc(c.tipo)}</div><h2 class="h-2" style="margin-top:10px">${esc(c.nombre)}</h2>${c.nota ? `<p class="sup" style="margin:8px 0 0">${esc(c.nota)}</p>` : ''}</div>
+      ${c.presupuestada ? `<div class="group pad"><div class="mrow"><span class="big-amt n ${(c.tipo === 'Fondo acumulable' ? c.acumulado : c.restante) < 0 ? 'neg' : ''}">${money(c.tipo === 'Fondo acumulable' ? c.acumulado : c.restante)}</span><span class="mlabel" style="color:var(--badge-green)">${c.tipo === 'Fondo acumulable' ? 'en el fondo' : 'te quedan · ' + pct(c.pct) + ' usado'}</span></div>${bar(c.pct)}
         <div class="sup n" style="display:flex;justify-content:space-between;margin-top:10px"><span>Gastado ${money(c.gastado)} de ${money(c.limite)}</span><span>Prom. feb–jul ${money(c.promedio)}</span></div></div>
       <form class="group pad" id="limf" style="display:grid;gap:10px"><label class="field"><span class="label">${c.tipo === 'Fondo acumulable' ? 'Apartar al mes' : 'Límite mensual'}</span>
-        <input class="input n" id="lim" inputmode="decimal" value="${c.limite}"></label><button class="btn sm" type="submit">${I('check', 14)}Guardar límite</button><div class="err" id="limerr"></div></form>` : `<div class="group pad"><span class="big-amt n">${money(c.gastado)}</span><div class="sup">Gastado en ${mesLargo(state.mes)} · sin límite</div></div>`}
-      <button class="btn primary block" data-act="nuevo-cat">Registrar aquí${I('mas', 16)}</button>
-      <div class="group"><div class="group-h"><span class="label" style="color:var(--ink)">${movs.length} movimientos en ${mesLargo(state.mes)}</span></div>${movs.map(rowMov).join('') || '<div class="empty">Nada registrado este mes.</div>'}</div>
+        <input class="input n" id="lim" inputmode="decimal" value="${c.limite}"></label><button class="btn secondary" type="submit">Guardar límite${Dot('check')}</button><div class="err" id="limerr"></div></form>` : `<div class="group pad"><span class="big-amt n">${money(c.gastado)}</span><div class="sup">Gastado en ${mesLargo(state.mes)} · sin límite</div></div>`}
+      <button class="btn primary block" data-act="nuevo-cat">Registrar aquí${Dot('mas')}</button>
+      <div class="group"><div class="group-h"><span class="proof" style="font-size:14px">${movs.length} movimientos en ${mesLargo(state.mes)}</span></div>${movs.map(rowMov).join('') || '<div class="empty">Nada registrado este mes.</div>'}</div>
     </div>`, true);
     sheetCtx = { type: 'cat', nombre };
     el.addEventListener('click', e => {
@@ -445,7 +447,7 @@
       <label class="field"><span class="label">Repo de datos</span><input class="input" id="repo" value="${esc(s.repo)}" autocapitalize="off" spellcheck="false"></label></div>
       <label class="field"><span class="label">Token</span><input class="input" id="token" type="password" placeholder="github_pat_…" autocapitalize="off" spellcheck="false" ${inSheet ? '' : 'required'}></label>
       <div class="err" id="connerr" role="alert"></div>
-      <button class="btn primary block" type="submit">${inSheet ? 'Cambiar conexión' : 'Conectar'}${I('flecha', 18)}</button></form>`;
+      <button class="btn primary ${inSheet ? '' : 'xl'} block" type="submit">${inSheet ? 'Cambiar conexión' : 'Conectar'}${Dot('flecha')}</button></form>`;
   }
   const tokenSteps = `<div class="steps">
       <div class="step"><b>1</b><p>Abre <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub → Fine-grained token</a>.</p></div>
@@ -458,29 +460,29 @@
       const s = { owner: $('#owner', root).value.trim(), repo: $('#repo', root).value.trim(), token: $('#token', root).value.trim() || prev.token };
       const err = $('#connerr', root), btn = e.submitter || $('button[type=submit]', root);
       if (!s.owner || !s.repo || !s.token) { err.textContent = 'Llena usuario, repo y token.'; return; }
-      btn.classList.add('busy'); btn.innerHTML = I('sync', 18) + 'Conectando…'; err.textContent = '';
+      btn.classList.add('busy'); btn.innerHTML = 'Conectando…' + I('sync', 14); err.textContent = '';
       try { await Store.connect(s); closeSheet(); render(); toast('Conectado. Tu base ya está en este teléfono.'); }
-      catch (x) { err.textContent = x.message; btn.classList.remove('busy'); btn.innerHTML = 'Reintentar' + I('flecha', 18); }
+      catch (x) { err.textContent = x.message; btn.classList.remove('busy'); btn.innerHTML = 'Reintentar' + Dot('flecha'); }
     });
   }
   function renderSetup() {
-    app.innerHTML = `<div class="blk inv" style="min-height:100vh;padding-top:calc(32px + var(--safe-t));padding-bottom:40px">
-      <div class="brand">${I('duck', 22)}<p class="kicker">${kicker('DuckFinance')}</p></div><h1 class="h-hero" style="margin-top:22px">Conecta tu base de datos</h1>
-      <p class="body-l" style="color:var(--gray-60);margin:14px 0 0">Tus movimientos viven en tu repo privado de GitHub. Esta página es pública, tus datos no.</p>
+    app.innerHTML = `<header class="blk top"><div class="top-row">${BRAND}</div></header><div class="blk hero" style="min-height:100vh;padding-bottom:40px">${REG('r')}
+      <p class="kicker">${kicker('Empezar')}</p><h1 class="h-hero">Conecta tu base de datos.</h1>
+      <p class="body-l" style="margin:16px 0 0">Tus movimientos viven en tu repo privado de GitHub. Esta página es pública; tus datos no.</p>
       ${tokenSteps}${connectForm(Store.settings() || DEFAULTS, false)}</div>`;
     bindConnect(app);
   }
   function settingsSheet() {
     const s = Store.settings() || DEFAULTS, st = Store.status;
     const el = openSheet(`${sheetHead('Ajustes')}<div class="blk stack" style="padding-bottom:calc(24px + var(--safe-b))">
-      <div class="group pad"><div class="label">Base de datos</div><div class="h-case" style="margin-top:8px;text-transform:none;font-size:18px">${esc(s.owner)}/${esc(s.repo)}</div>
+      <div class="group pad"><div class="label">Base de datos</div><div class="proof" style="margin-top:8px;text-transform:none">${esc(s.owner)}/${esc(s.repo)}</div>
         <div class="sup" style="margin-top:8px">${st.lastSync ? 'Última sincronización ' + esc(new Date(st.lastSync).toLocaleString('es-MX')) : 'Sin sincronizar'} · ${Store.pending()} cambios pendientes</div>
         ${st.error ? `<div class="note bad">${esc(st.error)}</div>` : ''}
-        <div class="two" style="margin-top:14px"><button class="btn sm" data-act="sync-now">${I('sync', 14)}Sincronizar</button><a class="btn sm" target="_blank" rel="noopener" href="https://github.com/${encodeURIComponent(s.owner)}/${encodeURIComponent(s.repo)}/commits">Historial</a></div></div>
-      <div class="group pad"><div class="label">Respaldo</div><p class="sup" style="margin:8px 0 12px">Descarga todos tus movimientos en CSV (abre en Excel).</p><button class="btn sm" data-act="csv">${I('descargar', 14)}Exportar CSV</button></div>
+        <div class="two" style="margin-top:14px"><button class="btn secondary" data-act="sync-now">Sincronizar${I('sync', 12)}</button><a class="btn secondary" target="_blank" rel="noopener" href="https://github.com/${encodeURIComponent(s.owner)}/${encodeURIComponent(s.repo)}/commits">Historial</a></div></div>
+      <div class="group pad"><div class="label">Respaldo</div><p class="sup" style="margin:8px 0 12px">Descarga todos tus movimientos en CSV (abre en Excel).</p><button class="btn secondary" data-act="csv">Exportar CSV${I('descargar', 12)}</button></div>
       <div class="group pad"><div class="label" style="margin-bottom:12px">Conexión</div>${tokenSteps}${connectForm(s, true)}
         <p class="sup">Deja el token vacío para conservar el actual.</p>
-        <button class="btn sm danger" data-act="logout" style="margin-top:6px">${I('cerrar', 12)}Desconectar este teléfono</button></div>
+        <button class="btn danger" data-act="logout" style="margin-top:6px">Desconectar este teléfono${Dot('cerrar')}</button></div>
     </div>`, true);
     sheetCtx = { type: 'settings' };
     bindConnect(el);
@@ -503,7 +505,7 @@
   function toast(msg) {
     const old = $('.toast'); if (old) old.remove();
     const t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status');
-    t.innerHTML = I('check', 14) + '<span></span>'; t.lastChild.textContent = msg;
+    t.innerHTML = Dot('check') + '<span></span>'; t.lastChild.textContent = msg;
     document.body.appendChild(t);
     clearTimeout(toast.h);
     toast.h = setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 300); }, 4200);
