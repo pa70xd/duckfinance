@@ -1,0 +1,46 @@
+# Cuentas Claras
+
+App personal para registrar gastos e ingresos desde el teléfono y ver siempre cuánto queda de cada límite del presupuesto.
+
+- **Hosting:** GitHub Pages, sin servidor y sin build. HTML, CSS y JS planos.
+- **Datos:** no viven aquí. Viven como JSON en un repo **privado** aparte; la app los lee y escribe con la API de contenidos de GitHub usando un token *fine-grained* que se guarda solo en el teléfono. Este repo no contiene datos personales.
+- **Sin señal:** cada cambio se guarda primero en el teléfono (cola en `localStorage`) y se sube al volver la conexión. Si dos dispositivos escriben el mismo mes, se reaplican los cambios sobre la versión nueva (el `sha` de GitHub evita pisar datos).
+- **Diseño:** sistema visual de Emerald (`design-brand-mrkt`): radio 0, borde 1px, verde `#04D976` como fondo y acento, Overused Grotesk para títulos, Space Grotesk para texto, Minecraft para kickers y métricas, trama de puntos de 24px en cada bloque y teclas como objeto de acción.
+
+## Estructura
+
+```
+index.html            shell (CSP: solo se conecta a api.github.com)
+css/app.css           tokens y componentes
+js/logic.js           cálculos: saldos, límites, fondos, deudas a meses, metas (sin DOM)
+js/store.js           base de datos en GitHub + copia local + cola de cambios
+js/app.js             pantallas: Límites (inicio), Movimientos, Cuentas, Metas, captura y ajustes
+sw.js                 funciona sin conexión
+fonts/  icons/        fuentes de la marca (con sus licencias) e íconos
+```
+
+## Formato de la base (repo privado)
+
+```
+db/config.json                 config, cuentas, categorias (límites), deudas, metas
+db/movimientos/AAAA-MM.json    un archivo por mes, un movimiento por línea
+```
+
+Movimiento: `{ id, fecha, concepto, monto, tipo, cuenta, destino?, categoria?, plan?, nota?, origen, creado?, editado? }`.
+`tipo` ∈ Gasto · Ingreso · Reembolso · Pago de tarjeta · Transferencia · Compra a meses · Cuota a meses · Ajuste de saldo.
+
+Cada guardado es un commit con mensaje legible (`Gasto: $350 Restaurantes y antojos (2026-09-14)`), así el historial del repo de datos es la bitácora.
+
+## Conectar un teléfono
+
+1. GitHub → Settings → Developer settings → [Fine-grained token](https://github.com/settings/personal-access-tokens/new).
+2. Repository access: *Only select repositories* → el repo de datos. Permissions: *Contents → Read and write*. Nada más.
+3. Abre la app, pega el token y en el menú del navegador elige *Agregar a pantalla de inicio*.
+
+## Desarrollo local
+
+```bash
+python -m http.server 8765
+```
+
+`dev/` (ignorado por git) tiene un GitHub simulado en memoria para probar sin token.

@@ -1,0 +1,86 @@
+Minecraft Regular — registro de licencia
+========================================
+
+Esta familia NO vino acompanada de un archivo de licencia formal, a diferencia
+de Overused Grotesk (LICENSE.txt) y Space Grotesk (OFL.txt). Lo que sigue es la
+transcripcion literal de los campos de licencia y autoria embebidos en la tabla
+`name` del propio archivo de fuente, verificados el 2026-08-31 leyendo el
+binario. No es una licencia redactada por Emerald ni una interpretacion: es lo
+que el archivo declara de si mismo.
+
+
+Campos declarados en Minecraft-Regular.otf
+------------------------------------------
+
+  Copyright    : Copyright 2017 by Jacob Debono.
+  Designer     : Jacob Debono
+  Manufacturer : JDGraphics Fonts
+  License      : Free for Commercial Use
+  Family       : Minecraft
+  Subfamily    : Regular
+  Version      : Version 1.000
+  PostScript   : Minecraft-Regular
+  Formato      : OTF (CFF), 11.016 bytes, 156 codepoints
+
+
+Procedencia del archivo
+-----------------------
+
+Descargado desde Fonts2u.com (repositorio agregador de fuentes gratuitas). El
+readme.txt que acompana la descarga contiene unicamente instrucciones de
+instalacion por sistema operativo — ninguna clausula de licencia, ningun autor,
+ningun termino de uso. Toda la informacion de autoria y licencia de arriba sale
+de los metadatos del binario, no del sitio de descarga.
+
+
+Reservas registradas (no resueltas aqui)
+----------------------------------------
+
+1. "Free for Commercial Use" es una declaracion del autor en los metadatos. No
+   especifica si permite redistribucion, embedding en un sitio web (@font-face)
+   ni modificacion. Emerald la versiona en este repositorio y la usaria embebida
+   en superficies propias; si esos dos usos necesitan confirmacion explicita,
+   corresponde pedirsela al autor.
+
+2. "Minecraft" es marca registrada de Mojang Synergies AB / Microsoft. El diseno
+   de esta fuente es obra original de Jacob Debono, pero el nombre de la familia
+   remite a esa marca. La fuente no declara ningun campo Trademark.
+
+3. Cobertura de caracteres incompleta para espanol: la fuente NO incluye las
+   mayusculas acentuadas (A E I O U con tilde) ni la "e" minuscula acentuada.
+   Si incluye a, i, o, u, n minusculas acentuadas y el separador "·".
+   Consecuencia asumida por decision de diseno (2026-08-31): el rol Kicker,
+   que va en mayusculas, no usa mayusculas acentuadas. Ver
+   decisions/sistema-web-editorial-syntax.md.
+
+   AMPLIACION 2026-09-01. Re-verificado el cmap completo con fontTools al
+   convertir la fuente a woff2 para el sitio. Los 156 codepoints confirman
+   punto por punto lo de arriba, y ademas revelan tres huecos que este
+   registro no tenia:
+
+     - Falta la flecha "->" (U+2192 RIGHTWARDS ARROW).
+     - Faltan las comillas tipograficas (U+2018 U+2019 U+201C U+201D) y la
+       raya corta (U+2013 EN DASH).
+     - Faltan los puntos suspensivos (U+2026 HORIZONTAL ELLIPSIS).
+
+   Se confirma tambien lo que SI esta y no estaba escrito: la "N" con virgulilla
+   en ambas cajas, la "U" con dielesis en ambas cajas, los signos de apertura
+   invertidos, y A-Z / a-z / 0-9 completos.
+
+   La flecha es la que importa en la practica: aparece en los CTAs del sitio
+   ("VER CASO COMPLETO ->"), aunque ese rol es Space Grotesk y no Minecraft. No
+   rompe nada hoy; rompe el dia que alguien meta una flecha en un kicker o en
+   una metrica.
+
+   HUECO DE REGLA, no de fuente. La consecuencia de diseno de 2026-08-31 cubre
+   el rol Kicker, pero Metric display tiene el mismo problema y ninguna regla
+   que lo cubra: tambien va en mayusculas, y una metrica real del sistema
+   ---"10 dias", en Como trabajamos--- se convierte en "10 DIAS" con "I"
+   acentuada, que esta fuente no tiene. Queda registrado para decision.
+
+
+Verificado por
+--------------
+
+Lectura directa de la tabla `name` y del `cmap` del binario, 2026-08-31, durante
+la sesion en que Minecraft quedo declarada tercera fuente del sistema (M.1).
