@@ -1,7 +1,7 @@
 // Funciona sin señal: primero red (para recibir actualizaciones), si no hay, lo guardado.
 // Las llamadas a api.github.com nunca pasan por aquí: la cola de cambios vive en la app.
-const CACHE = 'cc-v1';
-const SHELL = ['./', 'index.html', 'css/app.css', 'js/logic.js', 'js/store.js', 'js/app.js', 'manifest.webmanifest',
+const CACHE = 'df-v2';
+const SHELL = ['./', 'index.html', 'css/app.css', 'js/icons.js', 'js/logic.js', 'js/store.js', 'js/app.js', 'manifest.webmanifest',
   'fonts/OverusedGrotesk-VF.woff2', 'fonts/SpaceGrotesk-VF.woff2', 'fonts/Minecraft-Regular.woff2', 'icons/icon-192.png'];
 
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });

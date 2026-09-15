@@ -17,20 +17,12 @@
   // Minecraft no dibuja mayúsculas acentuadas: el kicker las pierde al mostrarse (Editorial Syntax v1)
   const kicker = txt => '/' + txt.toUpperCase().replace(/[ÁÉÍÓÚ]/g, c => 'AEIOU'['ÁÉÍÓÚ'.indexOf(c)]) + '_';
   const hoy = () => isoDate(new Date());
-  const ICON = {
-    left: '<svg viewBox="0 0 16 16"><path d="M10 3 5 8l5 5"/></svg>',
-    right: '<svg viewBox="0 0 16 16"><path d="m6 3 5 5-5 5"/></svg>',
-    gear: '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4"/></svg>',
-    close: '<svg viewBox="0 0 16 16"><path d="m3 3 10 10M13 3 3 13"/></svg>',
-    limites: '<svg viewBox="0 0 18 18"><path d="M2 4h14M2 9h9M2 14h5"/><path d="M13 12v4M15 14h-4" /></svg>',
-    movs: '<svg viewBox="0 0 18 18"><path d="M5 2v14M5 16l-3-3M5 16l3-3M13 16V2M13 2l-3 3M13 2l3 3"/></svg>',
-    cuentas: '<svg viewBox="0 0 18 18"><rect x="2" y="4" width="14" height="10"/><path d="M2 7.5h14"/></svg>',
-    metas: '<svg viewBox="0 0 18 18"><rect x="2" y="2" width="14" height="14"/><rect x="6" y="6" width="6" height="6"/></svg>'
-  };
+  const I = (n, size) => Icons.icon(n, size);
+  const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // ---------- estado ----------
   const store = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (e) { return d; } };
-  const state = { vista: store('cc.vista', 'limites'), mes: hoy().slice(0, 7), filtroLim: 'todos', filtroMov: 'todos', q: '' };
+  const state = { vista: store('df.vista', 'limites'), mes: hoy().slice(0, 7), filtroLim: 'todos', filtroMov: 'todos', q: '' };
   let D = null, R = null;
   const app = document.getElementById('app');
 
@@ -46,24 +38,38 @@
   }
 
   // ---------- render principal ----------
+  let enter = true, lastQueda = null;
   function render() {
     if (!Store.configured()) return renderSetup();
     recompute();
     if (!D) {
-      app.innerHTML = `<div class="blk inv" style="min-height:100vh;padding-top:calc(40px + var(--safe-t))"><p class="kicker">${kicker('Cuentas claras')}</p>
-        <h1 class="h-hero" style="margin-top:18px">Cargando tu base</h1><p class="sup" style="margin-top:12px">${esc(Store.status.error || 'Descargando tus datos de GitHub…')}</p>
-        ${Store.status.error ? '<button class="btn sm" data-act="settings" style="margin-top:18px">Ajustes</button>' : ''}</div>`;
+      const sk = (w, h) => `<div class="sk" style="width:${w};height:${h}px;margin-top:12px"></div>`;
+      app.innerHTML = `<div class="blk inv" style="min-height:100vh;padding-top:calc(24px + var(--safe-t))"><div class="brand">${I('duck', 22)}<p class="kicker">${kicker('DuckFinance')}</p></div>
+        <p class="label" style="margin-top:34px">Te queda del presupuesto</p>${sk('62%', 44)}${sk('40%', 14)}${sk('100%', 8)}
+        <div style="margin-top:40px">${sk('100%', 56)}${sk('100%', 56)}${sk('100%', 56)}</div>
+        <p class="sup" style="margin-top:24px">${esc(Store.status.error || 'Descargando tu base de GitHub…')}</p>
+        ${Store.status.error ? '<button class="btn sm" data-act="settings" style="margin-top:12px">Ajustes</button>' : ''}</div>`;
       return;
     }
     const scroll = window.scrollY;
-    const prevMain = app.dataset.vista;
     const act = document.activeElement, focusQ = act && act.id === 'q', caret = focusQ ? act.selectionStart : 0;
-    app.innerHTML = `${header()}<main>${VIEWS[state.vista]()}</main>${nav()}
-      <div class="keys"><button class="key green" data-act="nuevo" data-tipo="Gasto" aria-label="Registrar gasto"><b>-</b><span>Gasto</span></button>
-      <button class="key black" data-act="nuevo" data-tipo="Ingreso" aria-label="Registrar ingreso"><b>+</b><span>Ingreso</span></button></div>`;
-    app.dataset.vista = state.vista;
-    if (prevMain === state.vista) window.scrollTo(0, scroll);
+    const firstKeys = !$('.keys');
+    app.innerHTML = `${header()}<main class="${enter ? 'enter' : ''}">${VIEWS[state.vista]()}</main>${nav()}
+      <div class="keys ${firstKeys ? 'in' : ''}"><button class="key green" data-act="nuevo" data-tipo="Gasto" aria-label="Registrar gasto">${I('menos', 23)}<span>Gasto</span></button>
+      <button class="key black" data-act="nuevo" data-tipo="Ingreso" aria-label="Registrar ingreso">${I('mas', 23)}<span>Ingreso</span></button></div>`;
+    if (!enter) window.scrollTo(0, scroll);
     const q = $('#q'); if (q && focusQ) { q.focus(); q.setSelectionRange(caret, caret); }
+    if (enter && state.vista === 'limites') countUp($('#queda'), lastQueda, R.resumen.queda);
+    lastQueda = R.resumen.queda;
+    enter = false;
+  }
+  // Cambio de pantalla con entrada animada (sin View Transitions: en Chrome Android dejaban la pantalla congelada).
+  function go(fn) { enter = true; fn(); render(); }
+  function countUp(el, from, to) {
+    if (!el || REDUCED) return;
+    const t0 = performance.now(), dur = 550, ini = from === null ? 0 : from;
+    const tick = now => { const k = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - k, 3); el.textContent = money(ini + (to - ini) * e); if (k < 1) requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);
   }
 
   function header() {
@@ -73,21 +79,27 @@
     if (st.syncing) { cls = 'busy'; txt = pend ? `Subiendo ${pend}` : 'Sincronizando'; }
     else if (st.error) { cls = pend ? 'warn' : 'err'; txt = pend ? `${pend} sin subir` : 'Sin conexión'; }
     else if (pend) { cls = 'warn'; txt = `${pend} pendientes`; }
-    const titulo = { limites: 'Cuentas claras', movs: 'Movimientos', cuentas: 'Cuentas', metas: 'Metas' }[state.vista];
+    const titulo = { limites: 'DuckFinance', movs: 'Movimientos', cuentas: 'Cuentas', metas: 'Metas' }[state.vista];
     return `<header class="blk inv top">
-      <div class="top-row"><p class="kicker">${kicker(titulo)}</p>
-        <div style="display:flex;gap:10px;align-items:center"><button class="sync label ${cls}" data-act="sync" title="${esc(st.error || '')}"><i></i>${txt}</button>
-        <button class="iconbtn" data-act="settings" aria-label="Ajustes">${ICON.gear}</button></div></div>
+      <div class="top-row"><div class="brand">${I('duck', 22)}<p class="kicker">${kicker(titulo)}</p></div>
+        <div style="display:flex;gap:8px;align-items:center"><button class="sync label ${cls}" data-act="sync" title="${esc(st.error || '')}">${I('sync', 12)}${txt}</button>
+        <button class="iconbtn" data-act="settings" aria-label="Ajustes">${I('ajustes', 17)}</button></div></div>
       ${state.vista === 'limites' || state.vista === 'movs' ? `<div class="month">
-        <button class="iconbtn" data-act="mes" data-d="-1" ${i <= 0 ? 'disabled' : ''} aria-label="Mes anterior">${ICON.left}</button>
+        <button class="iconbtn" data-act="mes" data-d="-1" ${i <= 0 ? 'disabled' : ''} aria-label="Mes anterior">${I('izq', 15)}</button>
         <div class="h-case" aria-live="polite">${mesLargo(state.mes)}</div>
-        <button class="iconbtn" data-act="mes" data-d="1" ${i >= meses.length - 1 ? 'disabled' : ''} aria-label="Mes siguiente">${ICON.right}</button></div>` : ''}
+        <button class="iconbtn" data-act="mes" data-d="1" ${i >= meses.length - 1 ? 'disabled' : ''} aria-label="Mes siguiente">${I('der', 15)}</button></div>` : ''}
     </header>`;
   }
 
+  const VISTAS = ['limites', 'movs', 'cuentas', 'metas'];
   function nav() {
-    const b = (v, t) => `<button data-act="vista" data-v="${v}" ${state.vista === v ? 'aria-current="page"' : ''}>${ICON[v]}<span class="nav-t">${t}</span></button>`;
-    return `<nav class="nav" aria-label="Secciones"><div class="in">${b('limites', 'Límites')}${b('movs', 'Movimientos')}${b('cuentas', 'Cuentas')}${b('metas', 'Metas')}</div></nav>`;
+    const b = (v, t) => `<button data-act="vista" data-v="${v}" ${state.vista === v ? 'aria-current="page"' : ''}>${I(v, 19)}<span class="nav-t">${t}</span></button>`;
+    return `<nav class="nav" aria-label="Secciones"><div class="in"><i class="ind" style="transform:translateX(${VISTAS.indexOf(state.vista) * 100}%)"></i>${b('limites', 'Límites')}${b('movs', 'Movimientos')}${b('cuentas', 'Cuentas')}${b('metas', 'Metas')}</div></nav>`;
+  }
+  function tabs(act, opts, cur, label, attr) {
+    const i = Math.max(0, opts.findIndex(o => o[0] === cur));
+    const a = attr ? v => `type="button" ${attr}="${v}"` : v => `data-act="${act}" data-v="${v}"`;
+    return `<div class="tabs" role="group" aria-label="${label}"><i class="thumb" style="width:${100 / opts.length}%;transform:translateX(${i * 100}%)"></i>${opts.map(([v, t]) => `<button ${a(v)} aria-pressed="${cur === v}">${t}</button>`).join('')}</div>`;
   }
 
   function bar(p, sm) {
@@ -103,7 +115,7 @@
     const actual = state.mes === hoy().slice(0, 7);
     let h = `<section class="blk inv hero">
       <div class="label">Te queda del presupuesto</div>
-      <div class="hero-row"><div class="h-hero n ${s.queda < 0 ? 'neg' : ''}">${money(s.queda)}</div><div class="metric ${uso > 1 ? 'neg' : 'green-ink'}">${pct(uso)}</div></div>
+      <div class="hero-row"><div class="h-hero n ${s.queda < 0 ? 'neg' : ''}" id="queda">${money(s.queda)}</div><div class="metric ${uso > 1 ? 'neg' : 'green-ink'}">${pct(uso)}</div></div>
       <div class="sup n">Llevas ${money(s.gastadoPresup)} de ${money(s.presupuesto)}${actual ? ' · faltan ' + diasRestantes() + ' días' : ''}</div>
       ${bar(uso)}
       <div class="badges">${s.rojo ? `<span class="badge mal">${s.rojo} pasad${s.rojo === 1 ? 'a' : 'as'}</span>` : ''}${s.amarillo ? `<span class="badge cerca">${s.amarillo} cerca</span>` : ''}${!s.rojo && !s.amarillo ? '<span class="badge bien">Todo en orden</span>' : ''}</div>
@@ -112,7 +124,7 @@
     </section>
     <section class="blk"><div class="stack">
       <p class="kicker">${kicker('Límites por categoría')}</p>
-      <div class="tabs" role="group" aria-label="Filtro"><button data-act="flim" data-v="todos" aria-pressed="${state.filtroLim === 'todos'}">Todos</button><button data-act="flim" data-v="riesgo" aria-pressed="${state.filtroLim === 'riesgo'}">En riesgo</button></div>`;
+      ${tabs('flim', [['todos', 'Todos'], ['riesgo', 'En riesgo']], state.filtroLim, 'Filtro')}`;
     const grupos = [...new Set(R.cats.filter(c => c.presupuestada).map(c => c.grupo))];
     let alguno = false;
     for (const g of grupos) {
@@ -165,8 +177,8 @@
       <div class="wide"><span class="label">Balance del mes</span><span class="metric ${balance < 0 ? 'neg' : 'green-ink'}" style="font-size:24px;line-height:28px">${money(balance).replace('−', '-')}</span></div>
     </div></section>
     <section class="blk"><div class="stack">
-      <input id="q" class="search" type="search" placeholder="Buscar concepto, nota o monto" value="${esc(state.q)}" aria-label="Buscar" autocomplete="off">
-      <div class="tabs" role="group" aria-label="Tipo">${[['todos', 'Todos'], ['gastos', 'Gastos'], ['ingresos', 'Ingresos'], ['otros', 'Otros']].map(([v, t]) => `<button data-act="fmov" data-v="${v}" aria-pressed="${f === v}">${t}</button>`).join('')}</div>`;
+      <div class="search">${I('buscar', 16)}<input id="q" type="search" placeholder="Buscar concepto, nota o monto" value="${esc(state.q)}" aria-label="Buscar" autocomplete="off"></div>
+      ${tabs('fmov', [['todos', 'Todos'], ['gastos', 'Gastos'], ['ingresos', 'Ingresos'], ['otros', 'Otros']], f, 'Tipo')}`;
     if (!rows.length) return h + `<div class="group"><div class="empty">Sin movimientos con ese filtro en ${mesLargo(state.mes)}.</div></div></div></section>`;
     h += `<div class="group">`;
     let dia = null;
@@ -216,7 +228,7 @@
       <div class="group"><div class="group-h"><span class="label" style="color:var(--ink)">Te falta ${money(s.pendienteMsi)}</span><span class="label n">${money(s.cuotaActiva)}/mes · ${act.length} activas</span></div>
       ${act.map(d => `<div class="row"><div class="row-t"><span class="name">${esc(d.compra)}</span><span class="amt n">${money(d.pendiente)}</span></div>${bar(1 - d.pendiente / d.original, true)}
         <div class="sup n"><span>${esc(d.tarjeta)} · ${money(d.cuota)}/mes · faltan ${d.restantes}</span><span>${d.termina ? MES_C[+d.termina.slice(5, 7) - 1] + ' ' + d.termina.slice(0, 4) : ''}</span></div></div>`).join('')}
-      ${liq.length ? `<details><summary>${liq.length} liquidadas</summary>${liq.map(d => `<div class="row"><div class="row-t"><span class="name">${esc(d.compra)}</span><span class="amt n">${money(d.original)}</span></div><div class="sup"><span>${esc(d.tarjeta)} · ${fechaC(d.fecha)}</span></div></div>`).join('')}</details>` : ''}</div>`;
+      ${liq.length ? `<details><summary><span>${liq.length} liquidadas</span>${I('der', 12)}</summary>${liq.map(d => `<div class="row"><div class="row-t"><span class="name">${esc(d.compra)}</span><span class="amt n">${money(d.original)}</span></div><div class="sup"><span>${esc(d.tarjeta)} · ${fechaC(d.fecha)}</span></div></div>`).join('')}</details>` : ''}</div>`;
     if (auto) h += `<div class="group"><div class="row"><div class="row-t"><span class="name"><b style="font-weight:600">Crédito del auto</b></span><span class="amt n">${money(auto.pendiente)}</span></div>${bar(1 - auto.pendiente / auto.original, true)}
       <div class="sup n"><span>${auto.cuotasRegistradas} de ${auto.plazo} pagos · ${money(auto.cuota)}/mes por nómina</span><span>${auto.termina ? MES_C[+auto.termina.slice(5, 7) - 1] + ' ' + auto.termina.slice(0, 4) : ''}</span></div></div></div>`;
     return h + `</div></section>`;
@@ -247,10 +259,17 @@
     document.body.style.overflow = 'hidden';
     return $('.sheet-in', sheetRoot);
   }
-  function closeSheet() { sheetRoot.innerHTML = ''; document.body.style.overflow = ''; sheetCtx = null; }
+  function closeSheet() {
+    const sh = $('.sheet', sheetRoot);
+    sheetCtx = null; document.body.style.overflow = '';
+    if (!sh) return;
+    if (REDUCED) { sh.remove(); return; }
+    sh.classList.add('out'); sh.style.pointerEvents = 'none';
+    setTimeout(() => sh.remove(), 200);
+  }
   let sheetCtx = null;
   sheetRoot.addEventListener('click', e => { if (e.target.classList.contains('sheet')) closeSheet(); });
-  const sheetHead = t => `<div class="blk inv sheet-h"><p class="kicker">${kicker(t)}</p><button class="iconbtn" data-act="close" aria-label="Cerrar">${ICON.close}</button></div>`;
+  const sheetHead = t => `<div class="blk inv sheet-h"><p class="kicker">${kicker(t)}</p><button class="iconbtn" data-act="close" aria-label="Cerrar">${I('cerrar', 15)}</button></div>`;
 
   // ---------- captura: gasto, ingreso y demás ----------
   function capture(prefill, editing) {
@@ -262,7 +281,7 @@
     for (const m of D.mov) if (m.tipo === 'Gasto' && m.fecha >= addMonths(hoy(), -4)) conteo[m.categoria] = (conteo[m.categoria] || 0) + 1;
     const gastables = cats.filter(c => ['Mensual', 'Fondo acumulable', 'Tope anual', 'Sin presupuesto', 'Ahorro'].includes(c.tipo) && c.grupo !== 'Histórico');
     const favoritas = gastables.filter(c => c.tipo !== 'Sin presupuesto' || c.nombre === 'PC y tecnología').map(c => c.nombre).sort((a, b) => (conteo[b] || 0) - (conteo[a] || 0)).slice(0, 8);
-    const ultimaCta = store('cc.cta', 'RappiCard');
+    const ultimaCta = store('df.cta', 'RappiCard');
 
     const f = Object.assign({ tipo: 'Gasto', monto: '', categoria: '', cuenta: '', destino: '', concepto: '', fecha: hoy(), nota: '' }, prefill || {});
     if (!f.cuenta) f.cuenta = f.tipo === 'Ingreso' ? 'BBVA débito' : (cuentas.some(c => c.nombre === ultimaCta) ? ultimaCta : cuentas[0].nombre);
@@ -296,10 +315,7 @@
       if (!cs) f.categoria = '';
       const verbo = { Gasto: 'Con qué pagaste', Ingreso: 'A dónde llegó', Reembolso: 'A dónde llegó', 'Pago de tarjeta': 'Desde', Transferencia: 'Desde' }[f.tipo] || 'Cuenta';
       $('#cap', el).innerHTML = `
-        <div class="tabs" role="group" aria-label="Tipo">
-          <button type="button" data-tipo="Gasto" aria-pressed="${f.tipo === 'Gasto'}">Gasto</button>
-          <button type="button" data-tipo="Ingreso" aria-pressed="${f.tipo === 'Ingreso'}">Ingreso</button>
-          <button type="button" data-tipo="mas" aria-pressed="${mas}">Otro</button></div>
+        ${tabs('tipo', [['Gasto', 'Gasto'], ['Ingreso', 'Ingreso'], ['mas', 'Otro']], mas ? 'mas' : f.tipo, 'Tipo', 'data-tipo')}
         ${mas ? `<div class="field"><span class="label">Tipo de movimiento</span>${chips('tipo', TIPOS.filter(t => !principales.includes(t)), f.tipo)}</div>` : ''}
         <label class="field"><span class="label">Monto</span><span class="amount"><span>$</span><input id="monto" inputmode="decimal" autocomplete="off" placeholder="0" value="${esc(f.monto)}" aria-label="Monto"></span></label>
         ${cs ? `<div class="field"><span class="label">Categoría</span>${chips('categoria', [...new Set([...(f.categoria && !cs.chips.includes(f.categoria) ? [f.categoria] : []), ...cs.chips])], f.categoria)}
@@ -311,8 +327,8 @@
           <label class="field"><span class="label">Fecha</span><input class="input" id="fecha" type="date" value="${esc(f.fecha)}"></label></div>
         <label class="field"><span class="label">Nota</span><input class="input" id="nota" maxlength="140" placeholder="Opcional" value="${esc(f.nota)}"></label>
         <div class="err" id="err" role="alert"></div>
-        <button class="btn primary block" type="submit">Guardar ${f.tipo === 'Gasto' || f.tipo === 'Ingreso' ? f.tipo.toLowerCase() : ''}</button>
-        ${editing ? `<button class="btn danger block" type="button" data-del="1">Borrar movimiento</button>
+        <button class="btn primary block" type="submit">Guardar ${f.tipo === 'Gasto' || f.tipo === 'Ingreso' ? f.tipo.toLowerCase() : ''}${I('flecha', 18)}</button>
+        ${editing ? `<button class="btn danger block sm" type="button" data-del="1">${I('borrar', 15)}Borrar movimiento</button>
           <p class="sup" style="margin:0">Origen: ${esc(editing.origen || 'app')}${editing.creado ? ' · capturado ' + esc(editing.creado.slice(0, 16).replace('T', ' ')) : ''}</p>` : ''}`;
       impact();
     }
@@ -374,12 +390,12 @@
         cuenta: f.cuenta, destino: f.destino, categoria: f.categoria, nota: f.nota.trim(),
         origen: editing ? editing.origen : 'app', creado: editing ? editing.creado : new Date().toISOString()
       });
-      if (!editing) try { localStorage.setItem('cc.cta', JSON.stringify(f.cuenta)); } catch (x) {}
+      if (!editing) try { localStorage.setItem('df.cta', JSON.stringify(f.cuenta)); } catch (x) {}
       if (editing) row.editado = new Date().toISOString();
       Store.saveMovement(row, editing);
       closeSheet();
       const mesRow = row.fecha.slice(0, 7);
-      if (mesRow !== state.mes) state.mes = mesRow;
+      if (mesRow !== state.mes) { state.mes = mesRow; enter = true; }
       render();
       const c = R.cats.find(x => x.nombre === row.categoria);
       let msg = editing ? 'Cambios guardados.' : 'Guardado.';
@@ -401,8 +417,8 @@
         <div class="sup">${c.tipo === 'Fondo acumulable' ? 'Acumulado en el fondo' : 'Te queda en ' + mesLargo(state.mes)}</div>${bar(c.pct)}
         <div class="sup n" style="display:flex;justify-content:space-between;margin-top:10px"><span>Gastado ${money(c.gastado)} de ${money(c.limite)}</span><span>Prom. feb–jul ${money(c.promedio)}</span></div></div>
       <form class="group pad" id="limf" style="display:grid;gap:10px"><label class="field"><span class="label">${c.tipo === 'Fondo acumulable' ? 'Apartar al mes' : 'Límite mensual'}</span>
-        <input class="input n" id="lim" inputmode="decimal" value="${c.limite}"></label><button class="btn sm" type="submit">Guardar límite</button><div class="err" id="limerr"></div></form>` : `<div class="group pad"><span class="big-amt n">${money(c.gastado)}</span><div class="sup">Gastado en ${mesLargo(state.mes)} · sin límite</div></div>`}
-      <button class="btn primary block" data-act="nuevo-cat">Registrar aquí</button>
+        <input class="input n" id="lim" inputmode="decimal" value="${c.limite}"></label><button class="btn sm" type="submit">${I('check', 14)}Guardar límite</button><div class="err" id="limerr"></div></form>` : `<div class="group pad"><span class="big-amt n">${money(c.gastado)}</span><div class="sup">Gastado en ${mesLargo(state.mes)} · sin límite</div></div>`}
+      <button class="btn primary block" data-act="nuevo-cat">Registrar aquí${I('mas', 16)}</button>
       <div class="group"><div class="group-h"><span class="label" style="color:var(--ink)">${movs.length} movimientos en ${mesLargo(state.mes)}</span></div>${movs.map(rowMov).join('') || '<div class="empty">Nada registrado este mes.</div>'}</div>
     </div>`, true);
     sheetCtx = { type: 'cat', nombre };
@@ -422,18 +438,18 @@
   }
 
   // ---------- ajustes y conexión ----------
-  const DEFAULTS = { owner: 'pa70xd', repo: 'cuentas-claras-datos' };
+  const DEFAULTS = { owner: 'pa70xd', repo: 'duckfinance-datos' };
   function connectForm(s, inSheet) {
     return `<form id="conn" class="stack" autocomplete="off">
       <div class="two"><label class="field"><span class="label">Usuario de GitHub</span><input class="input" id="owner" value="${esc(s.owner)}" autocapitalize="off" spellcheck="false"></label>
       <label class="field"><span class="label">Repo de datos</span><input class="input" id="repo" value="${esc(s.repo)}" autocapitalize="off" spellcheck="false"></label></div>
       <label class="field"><span class="label">Token</span><input class="input" id="token" type="password" placeholder="github_pat_…" autocapitalize="off" spellcheck="false" ${inSheet ? '' : 'required'}></label>
       <div class="err" id="connerr" role="alert"></div>
-      <button class="btn primary block" type="submit">${inSheet ? 'Cambiar conexión' : 'Conectar'}</button></form>`;
+      <button class="btn primary block" type="submit">${inSheet ? 'Cambiar conexión' : 'Conectar'}${I('flecha', 18)}</button></form>`;
   }
   const tokenSteps = `<div class="steps">
       <div class="step"><b>1</b><p>Abre <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub → Fine-grained token</a>.</p></div>
-      <div class="step"><b>2</b><p><b>Repository access:</b> Only select repositories → <b>cuentas-claras-datos</b>. <b>Permissions:</b> Contents → Read and write. Nada más.</p></div>
+      <div class="step"><b>2</b><p><b>Repository access:</b> Only select repositories → <b>duckfinance-datos</b>. <b>Permissions:</b> Contents → Read and write. Nada más.</p></div>
       <div class="step"><b>3</b><p>Copia el token y pégalo aquí. Se guarda solo en este teléfono.</p></div></div>`;
   function bindConnect(root) {
     $('#conn', root).addEventListener('submit', async e => {
@@ -442,14 +458,14 @@
       const s = { owner: $('#owner', root).value.trim(), repo: $('#repo', root).value.trim(), token: $('#token', root).value.trim() || prev.token };
       const err = $('#connerr', root), btn = e.submitter || $('button[type=submit]', root);
       if (!s.owner || !s.repo || !s.token) { err.textContent = 'Llena usuario, repo y token.'; return; }
-      btn.disabled = true; btn.textContent = 'Conectando…'; err.textContent = '';
-      try { await Store.connect(s); closeSheet(); render(); toast('Conectado. Tus datos ya están en este teléfono.'); }
-      catch (x) { err.textContent = x.message; btn.disabled = false; btn.textContent = 'Reintentar'; }
+      btn.classList.add('busy'); btn.innerHTML = I('sync', 18) + 'Conectando…'; err.textContent = '';
+      try { await Store.connect(s); closeSheet(); render(); toast('Conectado. Tu base ya está en este teléfono.'); }
+      catch (x) { err.textContent = x.message; btn.classList.remove('busy'); btn.innerHTML = 'Reintentar' + I('flecha', 18); }
     });
   }
   function renderSetup() {
     app.innerHTML = `<div class="blk inv" style="min-height:100vh;padding-top:calc(32px + var(--safe-t));padding-bottom:40px">
-      <p class="kicker">${kicker('Cuentas claras')}</p><h1 class="h-hero" style="margin-top:20px">Conecta tu base de datos</h1>
+      <div class="brand">${I('duck', 22)}<p class="kicker">${kicker('DuckFinance')}</p></div><h1 class="h-hero" style="margin-top:22px">Conecta tu base de datos</h1>
       <p class="body-l" style="color:var(--gray-60);margin:14px 0 0">Tus movimientos viven en tu repo privado de GitHub. Esta página es pública, tus datos no.</p>
       ${tokenSteps}${connectForm(Store.settings() || DEFAULTS, false)}</div>`;
     bindConnect(app);
@@ -460,11 +476,11 @@
       <div class="group pad"><div class="label">Base de datos</div><div class="h-case" style="margin-top:8px;text-transform:none;font-size:18px">${esc(s.owner)}/${esc(s.repo)}</div>
         <div class="sup" style="margin-top:8px">${st.lastSync ? 'Última sincronización ' + esc(new Date(st.lastSync).toLocaleString('es-MX')) : 'Sin sincronizar'} · ${Store.pending()} cambios pendientes</div>
         ${st.error ? `<div class="note bad">${esc(st.error)}</div>` : ''}
-        <div class="two" style="margin-top:14px"><button class="btn sm" data-act="sync-now">Sincronizar</button><a class="btn sm" target="_blank" rel="noopener" href="https://github.com/${encodeURIComponent(s.owner)}/${encodeURIComponent(s.repo)}/commits">Historial</a></div></div>
-      <div class="group pad"><div class="label">Respaldo</div><p class="sup" style="margin:8px 0 12px">Descarga todos tus movimientos en CSV (abre en Excel).</p><button class="btn sm" data-act="csv">Exportar CSV</button></div>
+        <div class="two" style="margin-top:14px"><button class="btn sm" data-act="sync-now">${I('sync', 14)}Sincronizar</button><a class="btn sm" target="_blank" rel="noopener" href="https://github.com/${encodeURIComponent(s.owner)}/${encodeURIComponent(s.repo)}/commits">Historial</a></div></div>
+      <div class="group pad"><div class="label">Respaldo</div><p class="sup" style="margin:8px 0 12px">Descarga todos tus movimientos en CSV (abre en Excel).</p><button class="btn sm" data-act="csv">${I('descargar', 14)}Exportar CSV</button></div>
       <div class="group pad"><div class="label" style="margin-bottom:12px">Conexión</div>${tokenSteps}${connectForm(s, true)}
         <p class="sup">Deja el token vacío para conservar el actual.</p>
-        <button class="btn sm danger" data-act="logout" style="margin-top:6px">Desconectar este teléfono</button></div>
+        <button class="btn sm danger" data-act="logout" style="margin-top:6px">${I('cerrar', 12)}Desconectar este teléfono</button></div>
     </div>`, true);
     sheetCtx = { type: 'settings' };
     bindConnect(el);
@@ -485,20 +501,22 @@
   }
 
   function toast(msg) {
-    let t = $('.toast');
-    if (!t) { t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status'); document.body.appendChild(t); }
-    t.textContent = msg; t.hidden = false;
-    clearTimeout(toast.h); toast.h = setTimeout(() => { t.hidden = true; }, 4800);
+    const old = $('.toast'); if (old) old.remove();
+    const t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status');
+    t.innerHTML = I('check', 14) + '<span></span>'; t.lastChild.textContent = msg;
+    document.body.appendChild(t);
+    clearTimeout(toast.h);
+    toast.h = setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 300); }, 4200);
   }
 
   // ---------- eventos globales ----------
   app.addEventListener('click', e => {
     const t = e.target.closest('[data-act]'); if (!t) return;
     const a = t.dataset.act;
-    if (a === 'vista') { state.vista = t.dataset.v; try { localStorage.setItem('cc.vista', JSON.stringify(state.vista)); } catch (x) {} render(); window.scrollTo(0, 0); }
-    else if (a === 'mes') { const ms = mesesDisponibles(); const i = ms.indexOf(state.mes) + (+t.dataset.d); if (ms[i]) { state.mes = ms[i]; render(); } }
-    else if (a === 'flim') { state.filtroLim = t.dataset.v; render(); }
-    else if (a === 'fmov') { state.filtroMov = t.dataset.v; render(); }
+    if (a === 'vista') { if (t.dataset.v === state.vista) return; go(() => { state.vista = t.dataset.v; try { localStorage.setItem('df.vista', JSON.stringify(state.vista)); } catch (x) {} window.scrollTo(0, 0); }); }
+    else if (a === 'mes') { const ms = mesesDisponibles(); const i = ms.indexOf(state.mes) + (+t.dataset.d); if (ms[i]) go(() => { state.mes = ms[i]; }); }
+    else if (a === 'flim') go(() => { state.filtroLim = t.dataset.v; });
+    else if (a === 'fmov') go(() => { state.filtroMov = t.dataset.v; });
     else if (a === 'nuevo') capture({ tipo: t.dataset.tipo, fecha: state.mes === hoy().slice(0, 7) ? hoy() : state.mes + '-01' });
     else if (a === 'cat') categorySheet(t.dataset.n);
     else if (a === 'edit') { const m = D.mov.find(x => x.id === t.dataset.id); if (m) capture({ ...m, monto: String(m.monto) }, m); }

@@ -1,17 +1,18 @@
-# Cuentas Claras
+# DuckFinance
 
-App personal para registrar gastos e ingresos desde el teléfono y ver siempre cuánto queda de cada límite del presupuesto.
+App personal para registrar gastos e ingresos desde el teléfono y ver siempre cuánto queda de cada límite del presupuesto. El nombre es un guiño a un proyecto viejo; el pato pixel es el ícono.
 
 - **Hosting:** GitHub Pages, sin servidor y sin build. HTML, CSS y JS planos.
 - **Datos:** no viven aquí. Viven como JSON en un repo **privado** aparte; la app los lee y escribe con la API de contenidos de GitHub usando un token *fine-grained* que se guarda solo en el teléfono. Este repo no contiene datos personales.
 - **Sin señal:** cada cambio se guarda primero en el teléfono (cola en `localStorage`) y se sube al volver la conexión. Si dos dispositivos escriben el mismo mes, se reaplican los cambios sobre la versión nueva (el `sha` de GitHub evita pisar datos).
-- **Diseño:** sistema visual de Emerald (`design-brand-mrkt`): radio 0, borde 1px, verde `#04D976` como fondo y acento, Overused Grotesk para títulos, Space Grotesk para texto, Minecraft para kickers y métricas, trama de puntos de 24px en cada bloque y teclas como objeto de acción.
+- **Diseño:** sistema visual de Emerald (`design-brand-mrkt`): radio 0, borde 1px, verde `#04D976` como fondo y acento, Overused Grotesk para títulos, Space Grotesk para texto, Minecraft para kickers y métricas, trama de puntos de 24px en cada bloque, iconos pixel (3px sobre cadencia de 4px) y teclas con sombra dura como objeto de acción. Las animaciones son CSS con `prefers-reduced-motion` respetado.
 
 ## Estructura
 
 ```
 index.html            shell (CSP: solo se conecta a api.github.com)
 css/app.css           tokens y componentes
+js/icons.js           iconos pixel (bitmaps → SVG con bordes duros)
 js/logic.js           cálculos: saldos, límites, fondos, deudas a meses, metas (sin DOM)
 js/store.js           base de datos en GitHub + copia local + cola de cambios
 js/app.js             pantallas: Límites (inicio), Movimientos, Cuentas, Metas, captura y ajustes

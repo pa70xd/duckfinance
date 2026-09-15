@@ -1,6 +1,6 @@
 {
-  "name": "Cuentas Claras",
-  "short_name": "Cuentas",
+  "name": "DuckFinance",
+  "short_name": "Duck",
   "description": "Mis límites, gastos e ingresos.",
   "lang": "es-MX",
   "start_url": "./",

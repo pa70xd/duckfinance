@@ -2,7 +2,7 @@
 // db/config.json            cuentas, categorías (límites), deudas, metas
 // db/movimientos/AAAA-MM.json  un archivo por mes, un movimiento por línea
 (function (root) {
-  const K = { settings: 'cc.settings', cache: 'cc.cache', outbox: 'cc.outbox', lastSync: 'cc.lastSync' };
+  const K = { settings: 'df.settings', cache: 'df.cache', outbox: 'df.outbox', lastSync: 'df.lastSync' };
   const API = 'https://api.github.com';
   const load = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
   const save = (k, v) => localStorage.setItem(k, JSON.stringify(v));
@@ -101,7 +101,7 @@
     const puts = ops.filter(o => o.t === 'put'), dels = ops.filter(o => o.t === 'del');
     if (puts.length === 1 && !dels.length) { const r = puts[0].row; return `${r.tipo}: ${money(r.monto)} ${r.categoria || r.destino || ''} (${r.fecha})`.trim(); }
     if (dels.length === 1 && !puts.length && dels[0].label) { const r = dels[0].label; return dels[0].movedTo ? `Movido: ${r.tipo} ${money(r.monto)} (${r.fecha} → ${dels[0].movedTo})` : `Borrado: ${r.tipo} ${money(r.monto)} (${r.fecha})`; }
-    return `Cuentas Claras: ${puts.length} guardados, ${dels.length} borrados`;
+    return `DuckFinance: ${puts.length} guardados, ${dels.length} borrados`;
   }
 
   // --- sincronización ---
