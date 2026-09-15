@@ -104,6 +104,8 @@ a { color: inherit; }
 .badge.mal { color: var(--error-ink); } .inv .badge.mal { color: var(--error-inv); }
 .note { margin-top: 16px; padding: 12px 14px; border: 1px solid var(--fg); font-size: 14px; line-height: 1.25; color: var(--fg); }
 .note.bad { border-color: var(--error); }
+.note.pay { display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 12px; background: transparent; text-align: left; border-color: var(--warn-ink); font: inherit; font-size: 14px; }
+.note.pay .link { white-space: nowrap; }
 
 /* Tabs (Contact tab: Space Grotesk SemiBold, mayúsculas) y chips */
 .tabs { position: relative; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; border: 1px solid var(--fg); isolation: isolate; }

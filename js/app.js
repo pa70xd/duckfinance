@@ -123,6 +123,7 @@
       ${bar(uso)}
       <div class="proof" style="margin-top:12px;font-size:14px;color:var(--muted)">${pct(uso)} gastado${s.sinClasificar ? ' · ' + money(s.sinClasificar) + ' por clasificar' : ''}${actual ? ' · faltan ' + diasRestantes() + ' dias' : ''}</div>
       <div class="badges">${s.rojo ? `<span class="badge mal">${s.rojo} pasad${s.rojo === 1 ? 'a' : 'as'}</span>` : ''}${s.amarillo ? `<span class="badge cerca">${s.amarillo} cerca</span>` : ''}${!s.rojo && !s.amarillo ? `<span class="badge bien">${n} en orden</span>` : ''}</div>
+      ${actual ? pagosTarjeta().filter(t => t.dias <= 5 && !t.pagado).map(t => `<button class="note pay" data-act="pagar" data-card="${esc(t.nombre)}"><span><b>${esc(t.nombre)}:</b> ${t.dias === 0 ? 'hoy es el día límite de pago' : t.dias === 1 ? 'mañana es el día límite de pago' : `pago en ${t.dias} días (${fechaC(t.vence)})`}</span><span class="link">Registrar pago</span></button>`).join('') : ''}
       ${s.comprasMsiMes.length ? `<div class="note bad"><b>Compra nueva a meses: ${money(s.comprasMsiMes.reduce((a, m) => a + m.monto, 0))}.</b> La regla es cero, salvo el seguro del auto en abril.</div>` : ''}
     </section>
     <section class="blk">${REG('l')}<div class="stack">
@@ -153,6 +154,23 @@
         ${otras.map(c => `<button class="row" data-act="cat" data-n="${esc(c.nombre)}"><div class="row-t"><span class="name">${esc(c.nombre)}</span><span class="amt n">${money(c.gastado)}</span></div><div class="sup"><span>${esc(c.tipo)}</span><span>${c.movs} mov.</span></div></button>`).join('')}</div>`;
     }
     return h + `</div></section>`;
+  }
+  // Próximo pago de cada tarjeta de crédito: día límite de este mes o del siguiente, y si ya hay un pago registrado para ese corte
+  function pagosTarjeta() {
+    const h = hoy(), out = [];
+    for (const c of R.cuentas) {
+      if (c.tipo !== 'Crédito' || !c.pago || !c.corte) continue;
+      const [y, mo] = h.split('-').map(Number);
+      let vence = `${y}-${String(mo).padStart(2, '0')}-${String(c.pago).padStart(2, '0')}`;
+      if (vence < h) vence = addMonths(vence, 1);
+      // el corte que se paga es el anterior al vencimiento (RappiCard: corte 15 → pago día 4 del mes siguiente)
+      let corte = `${vence.slice(0, 8)}${String(c.corte).padStart(2, '0')}`;
+      if (corte >= vence) corte = addMonths(corte, -1);
+      const pagado = D.mov.filter(m => m.tipo === 'Pago de tarjeta' && m.destino === c.nombre && m.fecha > corte).reduce((a, m) => a + m.monto, 0);
+      const dias = Math.round((new Date(vence + 'T00:00:00') - new Date(h + 'T00:00:00')) / 864e5);
+      out.push({ nombre: c.nombre, vence, corte, dias, pagado, saldo: c.saldo });
+    }
+    return out;
   }
   function diasRestantes() {
     const d = new Date(), fin = new Date(d.getFullYear(), d.getMonth() + 1, 0);
@@ -227,7 +245,8 @@
       h += `<div class="row"><div class="row-t"><span class="name"><b style="font-weight:600">${esc(c.nombre)}</b></span><span class="amt n">${money(c.saldo, true)}</span></div>
         ${cred && c.limite ? bar(c.saldo / c.limite, true) : ''}
         <div class="sup n"><span>${cred ? 'Debes' : esc(c.tipo)}${ultima[c.nombre] ? ' · último mov. ' + fechaC(ultima[c.nombre]) : ''}</span><span>${cred && c.limite ? 'Disponible ' + money(c.disponible) : ''}</span></div>
-        ${cred && c.corte ? `<div class="sup"><span>Corte día ${c.corte} · pago ~día ${c.pago}</span></div>` : ''}</div>`;
+        ${cred && c.corte ? (() => { const t = pagosTarjeta().find(x => x.nombre === c.nombre); return `<div class="sup"><span>Corte día ${c.corte} · límite de pago ${t ? fechaC(t.vence) : '~día ' + c.pago}${t && t.pagado ? ` · pagado ${money(t.pagado)}` : ''}</span></div>
+          <div style="margin-top:10px"><button class="btn ${t && !t.pagado && t.dias <= 5 ? 'primary' : 'secondary'}" data-act="pagar" data-card="${esc(c.nombre)}">Pagar ${esc(c.nombre)}${Dot('flecha')}</button></div>`; })() : ''}</div>`;
     }
     h += `</div>`;
     const act = R.deudas.filter(d => d.activa && !d.auto).sort((a, b) => b.pendiente - a.pendiente);
@@ -296,15 +315,15 @@
     const credito = cuentas.filter(c => c.tipo === 'Crédito').map(c => c.nombre);
     const noCred = cuentas.filter(c => c.tipo !== 'Crédito').map(c => c.nombre);
     const cats = D.categorias, favoritas = favoritasGasto();
-    const ultimaCta = store('df.cta', 'RappiCard');
+    const ultimaCta = 'RappiCard'; // la tarjeta de casi todo; fija para que una compra con BBVA no arrastre a las siguientes
     const principales = ['Gasto', 'Ingreso'];
 
     const f = Object.assign({ tipo: 'Gasto', monto: '', categoria: '', cuenta: '', destino: '', concepto: '', fecha: hoy(), nota: '' }, prefill || {});
     if (!f.cuenta) f.cuenta = f.tipo === 'Ingreso' ? 'BBVA débito' : (cuentas.some(c => c.nombre === ultimaCta) ? ultimaCta : cuentas[0].nombre);
     let manualCat = !!(prefill && prefill.categoria), manualCta = !!(prefill && prefill.cuenta);
-    let mas = !principales.includes(f.tipo), elegir = !!editing, detalles = !!editing, cambiarCta = false;
+    let mas = !principales.includes(f.tipo), elegir = !!editing, detalles = !!editing;
 
-    const titulo = () => (editing ? 'Editar ' : 'Nuevo ') + f.tipo.toLowerCase();
+    const titulo = () => f.tipo === 'Pago de tarjeta' ? (editing ? 'Editar pago' : 'Pagar tarjeta') : (editing ? 'Editar ' : 'Nuevo ') + f.tipo.toLowerCase();
     const el = openSheet(`<div id="caph"></div><form class="blk form" id="cap" novalidate></form>`, true);
     sheetCtx = { type: 'capture' };
 
@@ -343,7 +362,7 @@
           : `<div class="hint">Escribe qué fue y la app propone la categoría. Si lo dejas vacío, queda <b>por clasificar</b>. <button type="button" class="link" data-act="elegir">Elegir categoría</button></div>`;
       }
       const cl = $('#ctaline', el);
-      if (cl) cl.innerHTML = cambiarCta ? `<div class="label" style="margin-bottom:8px">Con qué pagaste</div>${chips('cuenta', cuentasPara('Gasto').de, f.cuenta)}` : `<div class="hint">Con <b>${esc(f.cuenta)}</b> · <button type="button" class="link" data-act="cta">cambiar</button></div>`;
+      if (cl) cl.innerHTML = `<div class="label" style="margin-bottom:8px">Con qué pagaste</div>${chips('cuenta', cuentasPara('Gasto').de, f.cuenta)}`;
       impact();
     }
 
@@ -415,7 +434,6 @@
       const t = e.target.closest('button'); if (!t) return;
       if (t.dataset.act === 'close') return closeSheet();
       if (t.dataset.act === 'elegir') { read(); elegir = true; manualCat = !!f.categoria; return paint(); }
-      if (t.dataset.act === 'cta') { read(); cambiarCta = true; return paintSug(); }
       if (t.dataset.act === 'detalles') { read(); detalles = true; return paint(); }
       if (t.dataset.tipo) {
         read();
@@ -429,7 +447,7 @@
         if (group === 'tipo') f.categoria = '';
         if (group === 'categoria') manualCat = true;
         if (group === 'cuenta') manualCta = true;
-        if (f.tipo === 'Gasto' && (group === 'categoria' || group === 'cuenta') && !elegir) { if (group === 'cuenta') cambiarCta = false; return paintSug(); }
+        if (f.tipo === 'Gasto' && (group === 'categoria' || group === 'cuenta') && !elegir) return paintSug();
         return paint();
       }
       if (t.dataset.del) {
@@ -449,7 +467,6 @@
         cuenta: f.cuenta, destino: f.destino, categoria: f.categoria, nota: f.nota.trim(),
         origen: editing ? editing.origen : 'app', creado: editing ? editing.creado : new Date().toISOString()
       });
-      if (!editing) try { localStorage.setItem('df.cta', JSON.stringify(f.cuenta)); } catch (x) {}
       if (editing) row.editado = new Date().toISOString();
       Store.saveMovement(row, editing);
       closeSheet();
@@ -461,6 +478,7 @@
       if (c && c.tipo === 'Mensual') msg += ` ${c.nombre}: ${c.restante < 0 ? 'te pasaste por ' + money(-c.restante) : 'te quedan ' + money(c.restante)} este mes.`;
       else if (c && c.tipo === 'Fondo acumulable') msg += ` Fondo de ${c.nombre}: ${money(c.acumulado)}.`;
       else if (!row.categoria && row.tipo === 'Gasto') msg += ` Queda por clasificar (${R.porClasificar.length}).`;
+      else if (row.tipo === 'Pago de tarjeta') { const cc = R.cuentas.find(x => x.nombre === row.destino); if (cc) msg += ` ${cc.nombre}: ahora debes ${money(cc.saldo)}.`; }
       toast(msg);
     });
     paint();
@@ -613,6 +631,7 @@
     else if (a === 'nuevo') capture({ tipo: t.dataset.tipo, fecha: state.mes === hoy().slice(0, 7) ? hoy() : state.mes + '-01' });
     else if (a === 'cat') categorySheet(t.dataset.n);
     else if (a === 'clasificar') classifySheet(t.dataset.id);
+    else if (a === 'pagar') capture({ tipo: 'Pago de tarjeta', cuenta: 'BBVA débito', destino: t.dataset.card, concepto: 'Pago ' + t.dataset.card });
     else if (a === 'edit') { const m = D.mov.find(x => x.id === t.dataset.id); if (m) capture({ ...m, monto: String(m.monto) }, m); }
     else if (a === 'settings') settingsSheet();
     else if (a === 'sync') Store.sync();
