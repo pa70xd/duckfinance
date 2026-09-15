@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const { computeAll, computeSemana, categoryEffect, isoDate, addMonths, addDays, weekStart, daysInMonth, mesDeSemana, TIPOS } = Logic;
+  const { computeAll, computeSemana, computeMes, categoryEffect, isoDate, addMonths, addDays, weekStart, daysInMonth, mesDeSemana, TIPOS } = Logic;
 
   // ---------- utilidades ----------
   const $ = (s, el = document) => el.querySelector(s);
@@ -23,6 +23,8 @@
   const Dot = (n, size) => Icons.dots(n, size);
   const REG = side => `<i class="reg ${side}" aria-hidden="true"></i>`;
   const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // El pato de salud del mes (js/duck.js + saludMes) queda guardado para ideas futuras; true lo vuelve a mostrar en Límites
+  const PATO = false;
 
   // ---------- estado ----------
   const store = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (e) { return d; } };
@@ -148,51 +150,60 @@
     const actualSem = P.resumen.diasRestantes > 0 && P.resumen.diasRestantes < 8 && hoy() >= P.ws;
     const semana = {
       semana: true, s: P.resumen, titulo: etiquetaSemana(state.semana), sufijo: actualSem ? ' esta semana' : ' en la semana',
-      cats: P.cats.filter(c => c.limite > 0 || c.gastado !== 0), otras: P.otras,
+      cats: P.cats.filter(c => c.limite > 0 || c.gastado !== 0), fijos: P.fijos, otras: P.otras,
       gastoFondo: Object.fromEntries(P.fondos.map(f => [f.nombre, f.gastado])), faltan: actualSem ? P.resumen.diasRestantes : 0
     };
-    const r = R.resumen, actual = state.mes === hoy().slice(0, 7);
+    const M = computeMes(D, state.mes, hoy()), actual = state.mes === hoy().slice(0, 7);
     const mes = {
-      semana: false, s: { presupuesto: r.presupuesto, gastado: r.gastadoPresup, sinClasificar: r.sinClasificar, queda: r.queda }, titulo: mesLargo(state.mes), sufijo: actual ? ' este mes' : '',
-      cats: R.cats.filter(c => c.tipo === 'Mensual'), otras: R.cats.filter(c => !c.presupuestada && c.gastado !== 0 && c.tipo !== 'Ingreso'),
+      semana: false, s: M.resumen, titulo: mesLargo(state.mes), sufijo: actual ? ' este mes' : '',
+      cats: M.cats, fijos: M.fijos, otras: R.cats.filter(c => !c.presupuestada && c.gastado !== 0 && c.tipo !== 'Ingreso'),
       gastoFondo: null, faltan: actual ? diasRestantes() : 0
     };
     return state.periodo === 'semana' ? [semana, mes] : [mes, semana];
   }
-  // Cómo va el mes, para el pato: dormido (sin gastos o mes futuro), feliz, nervioso (va rápido o con varias pasadas) o mal (se pasó del total)
+  // Cómo va el mes, para el pato: dormido (sin gastos o mes futuro), feliz, nervioso (va rápido o con varias pasadas) o mal (se pasó de lo libre).
+  // Solo mira lo variable: los fijos están apartados.
   function saludMes() {
-    const s = R.resumen, cur = hoy().slice(0, 7), mes = state.mes, nombreMes = MESES[+mes.slice(5, 7) - 1];
-    const gasto = s.gastadoPresup + s.sinClasificar;
+    const M = computeMes(D, state.mes, hoy()), s = M.resumen, cur = hoy().slice(0, 7), mes = state.mes, nombreMes = MESES[+mes.slice(5, 7) - 1];
+    const gasto = s.gastado + s.sinClasificar + s.exceso;
     if (mes > cur) return { mood: 'dormido', msg: `Zzz... ${nombreMes} aun no empieza` };
     if (gasto <= 0) return { mood: 'dormido', msg: 'Zzz... sin gastos todavia' };
     if (s.queda < 0) return { mood: 'mal', msg: `Te pasaste ${money(-s.queda)} en ${nombreMes}` };
     const avance = mes < cur ? 1 : new Date().getDate() / daysInMonth(hoy());
     const uso = s.presupuesto ? gasto / s.presupuesto : 0;
-    const pasadas = R.cats.filter(c => c.tipo === 'Mensual' && c.estado === 'mal').sort((a, b) => a.restante - b.restante);
+    const pasadas = M.cats.filter(c => c.estado === 'mal').sort((a, b) => a.restante - b.restante);
     if (uso > avance + 0.1 || pasadas.length >= 3) return { mood: 'nervioso', msg: pasadas.length ? `Ojo con ${pasadas[0].nombre}` : `Vas rapido: ${pct(uso)} gastado` };
     if (mes < cur) return { mood: 'feliz', msg: `Cerraste con ${money(s.queda)} de sobra` };
     return { mood: 'feliz', msg: pasadas.length ? `Vas bien, cuida ${pasadas[0].nombre}` : `Vas bien: quedan ${money(s.queda)}` };
   }
 
-  const usoDe = x => x.presupuesto ? (x.gastado + x.sinClasificar) / x.presupuesto : 0;
+  const usoDe = x => x.presupuesto ? (x.gastado + x.sinClasificar + x.exceso) / x.presupuesto : 0;
+  // Barra del periodo: primero lo apartado para fijos (rayado, ya no es tuyo), luego lo gastado de lo libre
+  function barPeriodo(s, sm) {
+    const total = s.presupuesto + s.apartado, uso = usoDe(s);
+    if (!(total > 0)) return bar(0, sm);
+    const a = s.apartado / total * 100, g = Math.min(s.presupuesto, s.gastado + s.sinClasificar + s.exceso) / total * 100;
+    return `<div class="bar seg ${sm ? 'sm' : ''} ${uso > 1 ? 'bad' : uso >= 0.8 ? 'warn' : ''}">${a ? `<b style="width:${a}%"></b>` : ''}<i style="left:${a}%;width:${Math.max(0, g)}%"></i></div>`;
+  }
   function vLimites() {
     const [L, O] = periodoLimites(), s = L.s, so = O.s;
     const uso = usoDe(s), usoO = usoDe(so);
     const actual = state.mes === hoy().slice(0, 7);
     quedaPeriodo = s.queda;
-    // Toda la zona del número y el pato alterna el foco semana ⇄ mes; el periodo sin foco queda chico debajo
+    // Toda la zona del número alterna el foco semana ⇄ mes; el periodo sin foco queda chico debajo
     let h = `<section class="blk hero tap ${state.flip ? 'swap-in' : ''}" data-act="flip" role="button" tabindex="0" aria-label="${esc(L.titulo)}: ${money(s.queda)} disponibles. Toca para ver ${O.semana ? 'la semana' : 'el mes'} en grande">${REG('r')}
       <div class="p-main">
         <div class="big n ${s.queda < 0 ? 'neg' : ''}" id="queda">${money(s.queda)}</div>
         <div class="mlabel" style="margin-top:6px">${s.queda < 0 ? 'de mas sobre' : 'disponibles de'} ${money(s.presupuesto)}${L.sufijo}</div>
-        ${bar(uso)}
+        ${barPeriodo(s)}
         <div class="proof" style="margin-top:12px;font-size:14px;color:var(--muted)">${pct(uso)} gastado${s.sinClasificar ? ' · ' + money(s.sinClasificar) + ' por clasificar' : ''}${L.faltan ? ' · faltan ' + L.faltan + (L.faltan === 1 ? ' dia' : ' dias') : ''}</div>
+        ${s.apartado ? `<div class="apartado-l sup n"><i class="sw" aria-hidden="true"></i>${money(s.apartado)} apartado para fijos${s.exceso ? ` · ${money(s.exceso)} cobrados de más` : ''}</div>` : ''}
       </div>
       <div class="p-sec">
         <div class="row-t"><span class="label">${esc(O.titulo)} · ${pct(usoO)}</span><span class="sec-n n ${so.queda < 0 ? 'neg' : ''}">${so.queda < 0 ? 'Pasado ' + money(-so.queda) : money(so.queda)}<span class="sup"> de ${money(so.presupuesto)}</span></span></div>
-        ${bar(usoO, true)}
+        ${barPeriodo(so, true)}
       </div>
-      <div class="duck-stage" id="duck-stage"><canvas id="duck" role="img"></canvas><div class="duck-say" aria-live="polite" hidden></div></div>
+      ${PATO ? '<div class="duck-stage" id="duck-stage"><canvas id="duck" role="img"></canvas><div class="duck-say" aria-live="polite" hidden></div></div>' : ''}
     </section>
     <section class="blk">${REG('l')}<div class="stack">
       ${actual ? pagosTarjeta().filter(t => t.dias <= 5 && !t.pagado).map(t => `<button class="note pay" data-act="pagar" data-card="${esc(t.nombre)}"><span><b>${esc(t.nombre)}:</b> ${t.dias === 0 ? 'hoy es el día límite de pago' : t.dias === 1 ? 'mañana es el día límite de pago' : `pago en ${t.dias} días (${fechaC(t.vence)})`}</span><span class="link">Registrar pago</span></button>`).join('') : ''}`;
@@ -204,12 +215,17 @@
         ${pc.length > 4 ? `<div class="empty">y ${pc.length - 4} más</div>` : ''}
         <div class="pad" style="padding-top:4px"><button class="btn primary block" data-act="clasificar">Clasificar ahora${Dot('flecha')}</button></div></div>`;
     }
-    // Primero la que está más cerca de su límite (o más pasada); los fijos ya cobrados sin pasarse van al final
-    const orden = c => pagadoFijo(c) ? -1 : c.pct;
-    const cs = L.cats.slice().sort((a, b) => (orden(b) - orden(a)) || (b.limite - a.limite));
+    // Primero la que está más cerca de su límite (o más pasada)
+    const cs = L.cats.slice().sort((a, b) => (b.pct - a.pct) || (b.limite - a.limite));
     const tl = cs.reduce((a, c) => a + c.limite, 0), tg = cs.reduce((a, c) => a + c.gastado, 0);
     h += `<div class="group"><div class="group-h"><span class="proof">${L.semana ? 'Límites de la semana' : 'Límites del mes'}</span><span class="label n">${money(tg)} / ${money(tl)}</span></div>
-      ${cs.map(c => rowCat(c, L.semana, i++)).join('') || '<div class="empty">Nada con límite en este periodo.</div>'}</div>`;
+      ${cs.map(c => rowCat(c, i++)).join('') || '<div class="empty">Nada con límite en este periodo.</div>'}</div>`;
+    // Fijos: lo que el sistema ya apartó. Primero lo que falta cobrar, por fecha; lo pagado al final
+    if (L.fijos.length) {
+      const fs = L.fijos.slice().sort((a, b) => (a.pagado - b.pagado) || (a.pendientes[0] || a.cobros[0] || '9').localeCompare(b.pendientes[0] || b.cobros[0] || '9'));
+      h += `<div class="group"><div class="group-h"><span class="proof"><i class="sw" aria-hidden="true"></i>Apartado</span><span class="label n">${money(L.s.apartado)}</span></div>
+        ${fs.map(c => rowFijo(c, i++)).join('')}</div>`;
+    }
     const fondos = R.cats.filter(c => c.tipo === 'Fondo acumulable');
     if (fondos.length) {
       h += `<div class="group"><div class="group-h"><span class="proof">Fondos</span><span class="label n">Aparta ${money(fondos.reduce((a, c) => a + c.limite, 0))}/mes</span></div>
@@ -242,15 +258,21 @@
     const d = new Date(), fin = new Date(d.getFullYear(), d.getMonth() + 1, 0);
     return fin.getDate() - d.getDate() + 1;
   }
-  const pagadoFijo = c => !!(c.dias && c.dias.length) && c.gastado > 0 && c.restante >= 0;
-  function rowCat(c, semana, i) {
-    let derecha = pct(c.pct);
-    if (pagadoFijo(c)) derecha = 'Pagado';
-    else if (semana && c.limite === 0) derecha = 'Fuera de su semana';
-    else if (semana && c.fijo && c.gastado === 0) { const d = c.cobros[0]; derecha = `${d < hoy() ? 'Tocaba el' : 'Se cobra el'} ${DIAS[new Date(d + 'T00:00:00').getDay()]} ${+d.slice(8)}`; }
+  function rowCat(c, i) {
     return `<button class="row" style="--i:${i}" data-act="cat" data-n="${esc(c.nombre)}"><div class="row-t"><span class="name">${esc(c.nombre)}</span><span class="amt n ${c.restante < 0 ? 'neg' : ''}">${c.restante < 0 ? 'Pasado ' + money(-c.restante) : 'Queda ' + money(c.restante)}</span></div>
       ${bar(c.pct, true)}
-      <div class="sup n"><span>${money(c.gastado)} de ${money(c.limite)}</span><span>${derecha}</span></div></button>`;
+      <div class="sup n"><span>${money(c.gastado)} de ${money(c.limite)}</span><span>${pct(c.pct)}</span></div></button>`;
+  }
+  const diaC = d => `${DIAS[new Date(d + 'T00:00:00').getDay()]} ${+d.slice(8)}`;
+  function rowFijo(c, i) {
+    const p = c.pendientes;
+    let estado;
+    if (c.pagado) estado = c.ultimo ? `Pagado el ${diaC(c.ultimo)}` : 'Pagado';
+    else if (p.length < c.cobros.length) estado = `${c.gastado > 0 ? 'Pagado ' + money(c.gastado) + ' · ' : ''}falta el ${p.map(diaC).join(' y ')}`;
+    else estado = `${p[0] < hoy() ? 'Tocaba el' : 'Se cobra el'} ${p.map(diaC).join(' y ')}`;
+    const nota = c.exceso ? `${money(c.exceso)} de más` : c.meses && c.meses.length ? (c.meses.length === 6 ? 'Bimestral' : `Cada ${12 / c.meses.length} meses`) : '';
+    return `<button class="row fijo ${c.pagado ? 'ok' : ''}" style="--i:${i}" data-act="cat" data-n="${esc(c.nombre)}"><div class="row-t"><span class="name">${esc(c.nombre)}</span><span class="amt n">${money(c.pagado && c.gastado > 0 ? c.gastado : c.limite)}</span></div>
+      <div class="sup n"><span>${estado}</span><span class="${c.exceso ? 'neg' : ''}">${nota}</span></div></button>`;
   }
   function rowFondo(c, gastoSemana, i) {
     const periodo = gastoSemana ? `Esta semana ${money(gastoSemana[c.nombre] || 0)}` : `Este mes ${money(c.gastado)}`;
@@ -490,8 +512,8 @@
         box.innerHTML = `<div class="impact ${despues < 0 ? 'bad' : ''} n">Fondo de ${esc(c.nombre)}: ${money(c.acumulado)}${monto ? ` → <b>${money(despues)}</b>` : ''}</div>`;
         return;
       }
-      const despues = c.restante - monto, p = (c.gastado + monto) / c.limite;
-      box.innerHTML = `<div class="impact ${despues < 0 ? 'bad' : p >= 0.8 ? 'warn' : ''} n">${esc(c.nombre)}: te quedan ${money(c.restante)}${monto ? ` → <b>${despues < 0 ? 'te pasas por ' + money(-despues) : 'quedarían ' + money(despues)}</b>` : ` de ${money(c.limite)}`}</div>`;
+      const despues = c.restante - monto, p = c.limiteMes > 0 ? (c.gastado + monto) / c.limiteMes : 1;
+      box.innerHTML = `<div class="impact ${despues < 0 ? 'bad' : p >= 0.8 ? 'warn' : ''} n">${esc(c.nombre)}: te quedan ${money(c.restante)}${monto ? ` → <b>${despues < 0 ? 'te pasas por ' + money(-despues) : 'quedarían ' + money(despues)}</b>` : ` de ${money(c.limiteMes)}`}</div>`;
     }
 
     el.addEventListener('input', e => {
@@ -597,7 +619,7 @@
     const el = openSheet(`${sheetHead('Categoria')}<div class="blk stack" style="padding-bottom:calc(24px + var(--safe-b))">
       <div><div class="label">${esc(c.grupo)} · ${esc(c.tipo)}</div><h2 class="h-2" style="margin-top:10px">${esc(c.nombre)}</h2>${c.nota ? `<p class="sup" style="margin:8px 0 0">${esc(c.nota)}</p>` : ''}</div>
       ${c.presupuestada ? `<div class="group pad"><div class="mrow"><span class="big-amt n ${(c.tipo === 'Fondo acumulable' ? c.acumulado : c.restante) < 0 ? 'neg' : ''}">${money(c.tipo === 'Fondo acumulable' ? c.acumulado : c.restante)}</span><span class="mlabel" style="color:var(--badge-green)">${c.tipo === 'Fondo acumulable' ? 'en el fondo' : 'te quedan · ' + pct(c.pct) + ' usado'}</span></div>${bar(c.pct)}
-        <div class="sup n" style="display:flex;justify-content:space-between;margin-top:10px"><span>Gastado ${money(c.gastado)} de ${money(c.limite)}</span><span>Prom. feb–jul ${money(c.promedio)}</span></div></div>
+        <div class="sup n" style="display:flex;justify-content:space-between;margin-top:10px"><span>Gastado ${money(c.gastado)} de ${money(c.tipo === 'Mensual' ? c.limiteMes : c.limite)}</span><span>Prom. feb–jul ${money(c.promedio)}</span></div></div>
       <form class="group pad" id="limf" style="display:grid;gap:10px"><label class="field"><span class="label">${c.tipo === 'Fondo acumulable' ? 'Apartar al mes' : 'Límite mensual'}</span>
         <input class="input n" id="lim" inputmode="decimal" value="${c.limite}"></label><button class="btn secondary" type="submit">Guardar límite${Dot('check')}</button><div class="err" id="limerr"></div></form>` : `<div class="group pad"><span class="big-amt n">${money(c.gastado)}</span><div class="sup">Gastado en ${mesLargo(state.mes)} · sin límite</div></div>`}
       <button class="btn primary block" data-act="nuevo-cat">Registrar aquí${Dot('mas')}</button>

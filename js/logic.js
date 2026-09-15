@@ -68,11 +68,13 @@
       if (c.tipo === 'Fondo acumulable') {
         acumulado = hoy < D.config.inicio ? 0 : c.limite * (monthsBetween(D.config.inicio, hoy) + 1) - desdeInicio;
       }
-      const pct = presup && c.limite > 0 ? mesG / c.limite : null;
+      // Un fijo con meses de cobro (luz bimestral) tiene de límite lo que se cobra ese mes: $800 o $0
+      const limMes = c.tipo === 'Mensual' && esFijo(c) && c.meses ? limiteEnDias(c, diasDelMes(mes)).limite : c.limite;
+      const pct = presup ? (limMes > 0 ? mesG / limMes : mesG > 0 ? Infinity : 0) : null;
       let estado = null;
       if (c.tipo === 'Mensual' && pct !== null) estado = pct > 1 ? 'mal' : pct >= 0.8 ? 'cerca' : 'bien';
       if (c.tipo === 'Fondo acumulable') estado = acumulado < 0 ? 'mal' : 'bien';
-      return { ...c, gastado: r2(mesG), movs: n, restante: presup ? r2(c.limite - mesG) : null, pct, estado,
+      return { ...c, limiteMes: limMes, gastado: r2(mesG), movs: n, restante: presup ? r2(limMes - mesG) : null, pct, estado,
         semana: r2(semana), limiteSemanal: c.tipo === 'Mensual' ? c.limite * 12 / 52 : null,
         acumulado: acumulado === null ? null : r2(acumulado), promedio: r2(hist / 6), presupuestada: presup };
     });
@@ -135,33 +137,76 @@
   // Mes al que pertenece una semana (lunes a domingo): el de su jueves, como en ISO 8601
   const mesDeSemana = ws => addDays(ws, 3).slice(0, 7);
 
-  // Límite de una categoría en un rango de días. Los cargos fijos (c.dias = días del mes en que se cobran)
-  // cuentan completos en su día; lo variable se reparte por día según el largo de cada mes.
+  const esFijo = c => !!(c.dias && c.dias.length);
+  const diasDelMes = mes => Array.from({ length: daysInMonth(mes + '-01') }, (_, i) => mes + '-' + pad(i + 1));
+
+  // Límite de una categoría en un rango de días. Los cargos fijos (c.dias = días del mes en que se cobran;
+  // c.meses = meses en que hay cobro, p. ej. la luz bimestral) cuentan completos en su día: el recibo
+  // vale lo de todo su periodo (luz $400/mes cada 2 meses = $800). Lo variable se reparte por día.
   function limiteEnDias(c, dias) {
     let l = 0;
     const cobros = [];
     for (const d of dias) {
       const dim = daysInMonth(d), dd = +d.slice(8, 10);
-      if (c.dias && c.dias.length) {
-        for (const x of c.dias) if (Math.min(x, dim) === dd) { l += c.limite / c.dias.length; cobros.push(d); }
+      if (esFijo(c)) {
+        if (c.meses && c.meses.length && !c.meses.includes(+d.slice(5, 7))) continue;
+        const porCobro = c.limite * (c.meses && c.meses.length ? 12 / c.meses.length : 1) / c.dias.length;
+        for (const x of c.dias) if (Math.min(x, dim) === dd) { l += porCobro; cobros.push(d); }
       } else l += c.limite / dim;
     }
     return { limite: r2(l), cobros };
   }
 
-  // Límites de una semana: solo categorías mensuales (los fondos acumulan aparte).
-  function computeSemana(D, ws, hoy) {
-    const dias = [0, 1, 2, 3, 4, 5, 6].map(i => addDays(ws, i)), we = dias[6];
+  // Lo que un fijo cobró de más sobre lo apartado en su mes (p. ej. Claude Max con el dólar arriba), contado en los
+  // días desde..hasta en que se pasó. Eso sí sale de lo libre.
+  function excesoFijo(D, c, desde, hasta) {
+    let total = 0;
+    const meses = [...new Set(D.mov.filter(m => m.categoria === c.nombre && m.fecha >= desde && m.fecha <= hasta && categoryEffect(m)).map(m => monthKey(m.fecha)))];
+    for (const mes of meses) {
+      const apartado = limiteEnDias(c, diasDelMes(mes)).limite;
+      let antes = 0, hastaFin = 0;
+      for (const m of D.mov) {
+        if (m.categoria !== c.nombre || monthKey(m.fecha) !== mes || m.fecha > hasta) continue;
+        const e = categoryEffect(m);
+        hastaFin += e; if (m.fecha < desde) antes += e;
+      }
+      total += Math.max(0, hastaFin - apartado) - Math.max(0, antes - apartado);
+    }
+    return Math.max(0, r2(total));
+  }
+
+  // Semana (lunes a domingo).
+  const computeSemana = (D, ws, hoy) => computePeriodo(D, [0, 1, 2, 3, 4, 5, 6].map(i => addDays(ws, i)), hoy);
+  const computeMes = (D, mes, hoy) => computePeriodo(D, diasDelMes(mes), hoy);
+
+  // Límites de un periodo: categorías mensuales variables (lo libre), fijos (apartado, no cuenta como libre)
+  // y fondos acumulables (van aparte).
+  function computePeriodo(D, dias, hoy) {
+    const ws = dias[0], we = dias[dias.length - 1];
     const enSem = D.mov.filter(m => m.fecha >= ws && m.fecha <= we);
-    const cats = D.categorias.filter(c => c.tipo === 'Mensual').map(c => {
+    const mensuales = D.categorias.filter(c => c.tipo === 'Mensual').map(c => {
       const { limite, cobros } = limiteEnDias(c, dias);
-      let gastado = 0, movs = 0;
-      for (const m of enSem) if (m.categoria === c.nombre) { const e = categoryEffect(m); if (e) { gastado += e; movs++; } }
+      let gastado = 0, movs = 0, ultimo = null;
+      for (const m of enSem) if (m.categoria === c.nombre) { const e = categoryEffect(m); if (e) { gastado += e; movs++; if (!ultimo || m.fecha > ultimo) ultimo = m.fecha; } }
       gastado = r2(gastado);
       const pct = limite > 0 ? gastado / limite : gastado > 0 ? Infinity : 0;
       const estado = pct > 1 ? 'mal' : pct >= 0.8 ? 'cerca' : 'bien';
-      return { ...c, limiteMes: c.limite, limite, gastado, movs, restante: r2(limite - gastado), pct, estado, cobros, fijo: !!(c.dias && c.dias.length) };
+      return { ...c, limiteMes: c.limite, limite, gastado, movs, ultimo, restante: r2(limite - gastado), pct, estado, cobros, fijo: esFijo(c) };
     });
+    const cats = mensuales.filter(c => !c.fijo);
+    // El exceso de un fijo se mide contra lo apartado en su mes y se carga al periodo donde se pagó
+    // Un cobro está pagado si en su mes ya hay tantos pagos como cobros hasta él (el banco puede cobrar un día antes o después)
+    const fijos = mensuales.filter(c => c.fijo).map(c => {
+      const pagosDe = mes => D.mov.filter(m => m.categoria === c.nombre && monthKey(m.fecha) === mes && categoryEffect(m) > 0).map(m => m.fecha).sort();
+      const pendientes = c.cobros.filter(d => {
+        const delMes = limiteEnDias(c, diasDelMes(monthKey(d))).cobros;
+        return pagosDe(monthKey(d)).length <= delMes.indexOf(d);
+      });
+      const pagos = [...new Set(c.cobros.map(monthKey))].flatMap(pagosDe);
+      const ultimo = [c.ultimo, ...pagos].filter(Boolean).sort().pop() || null;
+      return { ...c, exceso: excesoFijo(D, { ...c, limite: c.limiteMes }, ws, we), pendientes, ultimo,
+        pagado: c.cobros.length ? !pendientes.length : c.gastado > 0 };
+    }).filter(c => c.limite > 0 || c.gastado !== 0);
     const fondos = D.categorias.filter(c => c.tipo === 'Fondo acumulable').map(c => ({
       nombre: c.nombre, gastado: r2(enSem.filter(m => m.categoria === c.nombre).reduce((a, m) => a + categoryEffect(m), 0))
     }));
@@ -178,11 +223,14 @@
     const sinClasificar = r2(enSem.filter(m => (m.tipo === 'Gasto' || m.tipo === 'Compra a meses') && !m.categoria).reduce((a, m) => a + m.monto, 0));
     const presupuesto = r2(cats.reduce((a, c) => a + c.limite, 0));
     const gastado = r2(cats.reduce((a, c) => a + c.gastado, 0));
-    const diasRestantes = hoy < ws ? 7 : hoy > we ? 0 : Math.round((new Date(we + 'T00:00:00') - new Date(hoy + 'T00:00:00')) / 864e5) + 1;
-    return { ws, we, dias, cats, fondos, otras: Object.values(otrasMap), resumen: { presupuesto, gastado, sinClasificar, queda: r2(presupuesto - gastado - sinClasificar), diasRestantes } };
+    const apartado = r2(fijos.reduce((a, c) => a + c.limite, 0));
+    const exceso = r2(fijos.reduce((a, c) => a + c.exceso, 0));
+    const diasRestantes = hoy < ws ? dias.length : hoy > we ? 0 : Math.round((new Date(we + 'T00:00:00') - new Date(hoy + 'T00:00:00')) / 864e5) + 1;
+    return { ws, we, dias, cats, fijos, fondos, otras: Object.values(otrasMap),
+      resumen: { presupuesto, gastado, sinClasificar, apartado, exceso, queda: r2(presupuesto - gastado - sinClasificar - exceso), diasRestantes } };
   }
 
-  const api = { computeAll, computeSemana, limiteEnDias, categoryEffect, monthKey, isoDate, addMonths, addDays, weekStart, daysInMonth, mesDeSemana, TIPOS, NEUTRAL };
+  const api = { computeAll, computeSemana, computeMes, computePeriodo, limiteEnDias, excesoFijo,categoryEffect, monthKey, isoDate, addMonths, addDays, weekStart, daysInMonth, mesDeSemana, TIPOS, NEUTRAL };
   if (typeof module !== 'undefined') module.exports = api;
   else root.Logic = api;
 })(this);

@@ -107,6 +107,16 @@ a { color: inherit; }
 .bar.warn > i { background: var(--warn); } .bar.bad > i { background: var(--error); }
 .bar.sm { height: 6px; margin-top: 10px; }
 .enter .bar > i { animation: grow .7s var(--ease) both; }
+/* Apartado para fijos: rayas de 2px, como memoria reservada por el sistema; lo gastado de lo libre sigue después */
+.bar > b, .sw { background: repeating-linear-gradient(90deg, var(--gray-70) 0 2px, var(--gray-40) 2px 4px); }
+.bar > b { position: absolute; left: 0; top: 0; bottom: 0; transition: width .6s var(--ease); }
+.enter .bar > b { animation: grow .5s var(--ease) both; }
+.bar.seg > i { transform-origin: left; }
+.sw { display: inline-block; width: 12px; height: 8px; margin-right: 8px; vertical-align: 1px; }
+.apartado-l { margin-top: 6px; color: var(--muted); }
+.group-h .proof .sw { vertical-align: 2px; }
+.row.fijo .amt { color: var(--gray-80); }
+.row.fijo.ok .name, .row.fijo.ok .amt { color: var(--gray-70); }
 @keyframes grow { from { transform: scaleX(0); } }
 /* Escenario del pato: canvas de baja resolución escalado ×3 sin suavizado, monocromo */
 .duck-stage { position: relative; height: 60px; margin: 14px 0 -12px; }
