@@ -659,7 +659,7 @@
   }
   const tokenSteps = `<div class="steps">
       <div class="step"><b>1</b><p>Abre <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub → Fine-grained token</a>.</p></div>
-      <div class="step"><b>2</b><p><b>Repository access:</b> Only select repositories → <b>duckfinance-datos</b>. <b>Permissions:</b> Contents → Read and write. Nada más.</p></div>
+      <div class="step"><b>2</b><p><b>Repository access:</b> Only select repositories → <b>duckfinance-datos</b> y <b>bridge-inbox</b> (las compras del teléfono). <b>Permissions:</b> Contents → Read and write. Nada más.</p></div>
       <div class="step"><b>3</b><p>Copia el token y pégalo aquí. Se guarda solo en este teléfono.</p></div></div>`;
   function bindConnect(root) {
     $('#conn', root).addEventListener('submit', async e => {
@@ -686,6 +686,7 @@
       <div class="group pad"><div class="label">Base de datos</div><div class="proof" style="margin-top:8px;text-transform:none">${esc(s.owner)}/${esc(s.repo)}</div>
         <div class="sup" style="margin-top:8px">${st.lastSync ? 'Última sincronización ' + esc(new Date(st.lastSync).toLocaleString('es-MX')) : 'Sin sincronizar'} · ${Store.pending()} cambios pendientes</div>
         ${st.error ? `<div class="note bad">${esc(st.error)}</div>` : ''}
+        <div class="sup" style="margin-top:8px">Compras del teléfono (Bridge): ${st.inbox ? (st.inbox.ok ? 'conectado a ' + esc(Store.inboxRepo()) : esc(st.inbox.error) + '. Regenera el token con acceso también a ese repo.') : 'sin revisar'}</div>
         <div class="two" style="margin-top:14px"><button class="btn secondary" data-act="sync-now">Sincronizar${I('sync', 12)}</button><a class="btn secondary" target="_blank" rel="noopener" href="https://github.com/${encodeURIComponent(s.owner)}/${encodeURIComponent(s.repo)}/commits">Historial</a></div></div>
       <div class="group pad"><div class="label">Respaldo</div><p class="sup" style="margin:8px 0 12px">Descarga todos tus movimientos en CSV (abre en Excel).</p><button class="btn secondary" data-act="csv">Exportar CSV${I('descargar', 12)}</button></div>
       <div class="group pad"><div class="label" style="margin-bottom:12px">Conexión</div>${tokenSteps}${connectForm(s, true)}
@@ -771,7 +772,40 @@
   });
   app.addEventListener('input', e => { if (e.target.id === 'q') { state.q = e.target.value; render(); } });
 
-  Store.subscribe(() => { if (Store.configured()) render(); });
+  // ---------- bandeja de Bridge: compras detectadas en el teléfono → gastos ----------
+  // Cada evento trae datos.monto, datos.comercio y opcionalmente cuenta/categoria/tipo. La categoría se propone
+  // con el historial igual que en la captura; si no la reconoce queda por clasificar.
+  function ingestInbox() {
+    if (!D || !IDX) return;
+    const items = Store.inboxEvents();
+    if (!items.length) return;
+    const cuentas = new Set(D.cuentas.map(c => c.nombre)), validas = new Set(gastables().map(c => c.nombre));
+    const rows = [];
+    let dup = 0;
+    for (const { event: e, ingerido } of items) {
+      if (ingerido) continue;
+      const d = e.datos || {}, monto = Math.round(Number(d.monto) * 100) / 100;
+      const t = new Date(e.capturado);
+      if (!(monto > 0) || isNaN(t)) continue;
+      const fecha = isoDate(t), concepto = String(d.comercio || d.concepto || 'Compra').trim();
+      const id = 'w' + e.id;
+      if (D.mov.some(m => m.id === id)) continue;
+      // Ya capturado a mano: mismo monto de gasto a ±1 día
+      if (D.mov.some(m => m.tipo === 'Gasto' && m.origen !== 'bridge' && Math.abs(m.monto - monto) < 0.01 && Math.abs(new Date(m.fecha + 'T00:00:00') - new Date(fecha + 'T00:00:00')) <= 864e5)) { dup++; continue; }
+      const sug = Classify.suggest(IDX, concepto, 1)[0];
+      const categoria = validas.has(d.categoria) ? d.categoria : sug ? sug.categoria : '';
+      const cuenta = cuentas.has(d.cuenta) ? d.cuenta : sug && sug.cuenta && cuentas.has(sug.cuenta) ? sug.cuenta : 'RappiCard';
+      rows.push({ id, fecha, concepto, monto, tipo: TIPOS.includes(d.tipo) ? d.tipo : 'Gasto', cuenta, categoria, origen: 'bridge', bridge: e.regla, creado: new Date().toISOString() });
+      D.mov.push(rows[rows.length - 1]); // para detectar duplicados dentro del mismo lote
+    }
+    Store.ingest(items, rows);
+    if (rows.length) {
+      const sin = rows.filter(r => !r.categoria).length;
+      toast(`${rows.length === 1 ? `${rows[0].concepto} ${money(rows[0].monto, true)} registrado` : `${rows.length} compras registradas`} desde el teléfono${sin ? ` · ${sin} por clasificar` : ''}.`);
+    } else if (dup) toast(`${dup === 1 ? 'Una compra del teléfono ya estaba capturada' : dup + ' compras del teléfono ya estaban capturadas'}.`);
+  }
+
+  Store.subscribe(() => { if (Store.configured()) { render(); ingestInbox(); } });
   window.addEventListener('online', () => Store.sync());
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') Store.sync(); });
 

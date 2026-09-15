@@ -7,10 +7,12 @@
   const load = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
   const save = (k, v) => localStorage.setItem(k, JSON.stringify(v));
 
-  let cache = load(K.cache, { config: null, months: {} }); // months[mes] = { sha, rows }
+  let cache = load(K.cache, { config: null, months: {} }); // months[mes] = { sha, rows }; inbox = [{ path, sha, event }]
   let outbox = load(K.outbox, []);
+  // Eventos de la bandeja ya convertidos en movimiento (id → fecha): no reviven aunque el borrado del archivo tarde
+  let ingeridos = load('df.ingeridos', {});
   const listeners = new Set();
-  const status = { syncing: false, error: null, lastSync: load(K.lastSync, null) };
+  const status = { syncing: false, error: null, lastSync: load(K.lastSync, null), inbox: null };
   const emit = () => listeners.forEach(fn => fn());
 
   const settings = () => load(K.settings, null);
@@ -18,11 +20,16 @@
 
   class ApiError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
 
-  async function gh(path, opts = {}) {
+  // Bandeja de Bridge (app Android que convierte notificaciones de compras en eventos): un JSON por evento.
+  const INBOX = { repo: 'pa70xd/bridge-inbox', path: 'duckfinance' };
+  const inboxRepo = () => (settings() || {}).inbox || INBOX.repo;
+
+  async function gh(path, opts = {}, repo) {
     const s = settings();
+    const base = repo ? repo.split('/').map(encodeURIComponent).join('/') : `${encodeURIComponent(s.owner)}/${encodeURIComponent(s.repo)}`;
     let r;
     try {
-      r = await fetch(`${API}/repos/${encodeURIComponent(s.owner)}/${encodeURIComponent(s.repo)}/${path}`, {
+      r = await fetch(`${API}/repos/${base}${path ? '/' + path : ''}`, {
         ...opts, cache: 'no-store',
         headers: { Authorization: `Bearer ${s.token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', ...(opts.headers || {}) }
       });
@@ -38,12 +45,12 @@
   const fromB64 = b64 => new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\s/g, '')), c => c.charCodeAt(0)));
   const dumpRows = rows => '[\n' + rows.map(r => JSON.stringify(r)).join(',\n') + '\n]\n';
 
-  async function getFile(path) {
-    try { const j = await gh(`contents/${path}`); return { sha: j.sha, data: JSON.parse(fromB64(j.content)) }; }
+  async function getFile(path, repo) {
+    try { const j = await gh(`contents/${path}`, {}, repo); return { sha: j.sha, data: JSON.parse(fromB64(j.content)) }; }
     catch (e) { if (e.status === 404) return null; throw e; }
   }
-  async function listDir(path) {
-    try { return await gh(`contents/${path}`); } catch (e) { if (e.status === 404) return []; throw e; }
+  async function listDir(path, repo) {
+    try { return await gh(`contents/${path}`, {}, repo); } catch (e) { if (e.status === 404) return []; throw e; }
   }
   const putFile = (path, text, sha, message) =>
     gh(`contents/${path}`, { method: 'PUT', body: JSON.stringify({ message, content: toB64(text), ...(sha ? { sha } : {}) }) });
@@ -62,7 +69,7 @@
     for (const op of ops) if (op.t === 'limite') { const c = out.categorias.find(x => x.nombre === op.nombre); if (c) c.limite = op.limite; }
     return out;
   }
-  const fileOf = op => op.t === 'limite' ? 'config' : op.mes;
+  const fileOf = op => op.t === 'limite' ? 'config' : op.t === 'inboxDel' ? 'inbox:' + op.path : op.mes;
 
   function data() {
     if (!cache.config) return null;
@@ -84,15 +91,31 @@
     sync();
   }
 
+  const clean = row => Object.fromEntries(Object.entries(row).filter(([k, v]) => !k.startsWith('_') && v !== '' && v !== null && v !== undefined));
   const newId = () => 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   function saveMovement(row, previous) {
     const ops = [];
     if (previous && previous.fecha.slice(0, 7) !== row.fecha.slice(0, 7)) ops.push({ t: 'del', mes: previous.fecha.slice(0, 7), rowId: previous.id, label: previous, movedTo: row.fecha });
-    const clean = Object.fromEntries(Object.entries(row).filter(([k, v]) => !k.startsWith('_') && v !== '' && v !== null && v !== undefined));
-    ops.push({ t: 'put', mes: row.fecha.slice(0, 7), row: clean });
+    ops.push({ t: 'put', mes: row.fecha.slice(0, 7), row: clean(row) });
     enqueue(ops);
   }
   const deleteMovement = row => enqueue([{ t: 'del', mes: row.fecha.slice(0, 7), rowId: row.id, label: row }]);
+
+  // Eventos de la bandeja sin borrado pendiente. `ingerido`: ya se convirtió antes (solo falta borrar el archivo)
+  function inboxEvents() {
+    const borrando = new Set(outbox.filter(o => o.t === 'inboxDel').map(o => o.path));
+    return (cache.inbox || []).filter(x => !borrando.has(x.path)).map(x => ({ ...x, ingerido: !!ingeridos[x.event.id] }));
+  }
+  // Convierte eventos en movimientos (rows puede ser más corto: duplicados o inválidos solo se borran) y borra sus archivos después
+  function ingest(items, rows) {
+    const ahora = Date.now();
+    for (const x of items) ingeridos[x.event.id] = ahora;
+    for (const k of Object.keys(ingeridos)) if (ahora - ingeridos[k] > 60 * 864e5) delete ingeridos[k];
+    save('df.ingeridos', ingeridos);
+    const ops = rows.map(row => ({ t: 'put', mes: row.fecha.slice(0, 7), row: clean(row) }));
+    for (const x of items) ops.push({ t: 'inboxDel', path: x.path, sha: x.sha, label: x.event });
+    enqueue(ops);
+  }
   const setLimit = (nombre, limite) => enqueue([{ t: 'limite', nombre, limite }]);
 
   const money = n => '$' + Number(n).toLocaleString('es-MX', { maximumFractionDigits: 2 });
@@ -101,6 +124,7 @@
     const puts = ops.filter(o => o.t === 'put'), dels = ops.filter(o => o.t === 'del');
     if (puts.length === 1 && !dels.length) { const r = puts[0].row; return `${r.tipo}: ${money(r.monto)} ${r.categoria || r.destino || (r.tipo === 'Gasto' ? 'por clasificar' : '')} (${r.fecha})`.replace('  ', ' '); }
     if (dels.length === 1 && !puts.length && dels[0].label) { const r = dels[0].label; return dels[0].movedTo ? `Movido: ${r.tipo} ${money(r.monto)} (${r.fecha} → ${dels[0].movedTo})` : `Borrado: ${r.tipo} ${money(r.monto)} (${r.fecha})`; }
+    if (puts.length && !dels.length && puts.every(o => o.row.origen === 'bridge')) return `Teléfono: ${puts.length} compras (${puts.map(o => o.row.concepto).join(', ')})`.slice(0, 200);
     return `DuckFinance: ${puts.length} guardados, ${dels.length} borrados`;
   }
 
@@ -134,14 +158,59 @@
     const files = await Promise.all(stale.map(mes => getFile(`db/movimientos/${mes}.json`)));
     stale.forEach((mes, i) => { if (files[i]) cache.months[mes] = { sha: files[i].sha, rows: files[i].data }; });
     for (const mes of Object.keys(cache.months)) if (!remote[mes]) delete cache.months[mes];
+    await pullInbox();
     save(K.cache, cache);
     emit();
+  }
+
+  // La bandeja es opcional: si el token no la ve, DuckFinance sigue funcionando y Ajustes lo avisa.
+  async function pullInbox() {
+    try {
+      // 404 en la carpeta puede ser "vacía" o "el token no ve el repo": se distingue preguntando por el repo
+      let list;
+      try { list = await gh(`contents/${INBOX.path}`, {}, inboxRepo()); }
+      catch (e) { if (e.status !== 404) throw e; await gh('', {}, inboxRepo()); list = []; }
+      const prev = Object.fromEntries((cache.inbox || []).map(x => [x.path, x]));
+      const next = [];
+      for (const e of Array.isArray(list) ? list : []) {
+        if (e.type !== 'file' || !/\.json$/.test(e.name)) continue;
+        const path = `${INBOX.path}/${e.name}`;
+        if (prev[path] && prev[path].sha === e.sha) { next.push(prev[path]); continue; }
+        const f = await getFile(path, inboxRepo());
+        if (f && f.data && f.data.id && f.data.datos) next.push({ path, sha: f.sha, event: f.data });
+      }
+      cache.inbox = next;
+      status.inbox = { ok: true, pendientes: next.length };
+    } catch (e) {
+      status.inbox = { ok: false, error: e.status === 403 || e.status === 404 ? `El token no ve ${inboxRepo()}` : e.message };
+    }
+  }
+
+  async function deleteInbox(ops) {
+    for (const op of ops) {
+      for (let intento = 0; ; intento++) {
+        try {
+          await gh(`contents/${op.path.split('/').map(encodeURIComponent).join('/')}`, { method: 'DELETE', body: JSON.stringify({ message: `Registrado en DuckFinance: ${op.label && op.label.datos ? (op.label.datos.comercio || '') + ' ' + (op.label.datos.monto || '') : op.path}`.trim(), sha: op.sha }) }, inboxRepo());
+        } catch (e) {
+          if (e.status === 404) { /* ya no estaba */ }
+          else if ((e.status === 409 || e.status === 422) && intento < 2) { const f = await getFile(op.path, inboxRepo()); if (f) { op.sha = f.sha; continue; } }
+          else throw e;
+        }
+        break;
+      }
+      cache.inbox = (cache.inbox || []).filter(x => x.path !== op.path);
+      outbox = outbox.filter(o => o.opId !== op.opId);
+      save(K.cache, cache); save(K.outbox, outbox); emit();
+    }
   }
 
   async function push() {
     const groups = {};
     for (const op of outbox) (groups[fileOf(op)] = groups[fileOf(op)] || []).push(op);
-    for (const [file, ops] of Object.entries(groups)) {
+    // Los borrados de la bandeja van al final: solo después de que el gasto quedó guardado
+    const entries = Object.entries(groups).sort((a, b) => a[0].startsWith('inbox:') - b[0].startsWith('inbox:'));
+    for (const [file, ops] of entries) {
+      if (file.startsWith('inbox:')) { await deleteInbox(ops); continue; }
       const path = file === 'config' ? 'db/config.json' : `db/movimientos/${file}.json`;
       for (let intento = 0; ; intento++) {
         const base = file === 'config' ? cache.config : cache.months[file];
@@ -199,7 +268,7 @@
 
   root.Store = {
     settings, configured, connect, disconnect, sync, data, status, newId, exportCsv,
-    saveMovement, deleteMovement, setLimit,
+    saveMovement, deleteMovement, setLimit, inboxEvents, ingest, inboxRepo,
     pending: () => outbox.length,
     subscribe: fn => { listeners.add(fn); return () => listeners.delete(fn); }
   };
