@@ -750,5 +750,18 @@
   }
   render();
   Store.sync();
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  if ('serviceWorker' in navigator) {
+    // Cuando llega una versión nueva de la app, se recarga sola una vez (salvo con una hoja abierta, para no perder una captura)
+    const habiaSW = !!navigator.serviceWorker.controller;
+    let recargado = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!habiaSW || recargado) return;
+      const recargar = () => { if (!recargado && !$('.sheet', sheetRoot)) { recargado = true; location.reload(); } };
+      recargar();
+      if (!recargado) { const t = setInterval(() => { recargar(); if (recargado) clearInterval(t); }, 2000); }
+    });
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => {
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
+    }).catch(() => {});
+  }
 })();
